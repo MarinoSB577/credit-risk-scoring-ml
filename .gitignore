@@ -1,0 +1,27 @@
+# Dataset (archivos pesados, no van a GitHub)
+data/raw/
+data/processed/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+*.egg-info/
+
+# MLflow
+mlruns/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Credenciales (NUNCA subir esto a GitHub)
+*.key
+*.pem
+secrets.json
+.env
