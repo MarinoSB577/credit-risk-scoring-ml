@@ -1,0 +1,22 @@
+name: credit-risk-endpoint
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  # Python base
+  - python=3.10
+  - pip
+
+  - pip:
+    # Framework del modelo
+    - lightgbm==4.3.0
+
+    # MLflow para cargar el modelo en formato pyfunc
+    - mlflow==2.19.0
+
+    # Manipulación de datos
+    - pandas==2.2.1
+    - numpy==1.26.4
+
+    # SDK de Azure ML — requerido por el endpoint
+    - azureml-defaults
