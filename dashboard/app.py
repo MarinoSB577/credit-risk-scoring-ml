@@ -24,7 +24,7 @@ st.set_page_config(
 # cache_resource evita recargar el modelo en cada
 # interacción del usuario — mejora rendimiento significativamente
 def load_model():
-    model_path = Path("../mlruns/521656391598123434/models/m-4b3e2786ebbf4f6982ed89b1009b26b8/artifacts/model.pkl")
+    model_path = Path("dashboard/models/model.pkl")
     if not model_path.exists():
         return None
     return joblib.load(model_path)
@@ -37,7 +37,7 @@ model = load_model()
 
 @st.cache_data
 def load_reference_data():
-    df = pd.read_csv("../data/processed/df_lgbm.csv")
+    df = pd.read_csv("dashboard/data/df_sample.csv")
     return df
 
 # ─────────────────────────────────────────────
