@@ -214,6 +214,23 @@ jupyter notebook
 
 ---
 
+## 📸 Evidencia en Azure ML
+
+### Workspace
+![Workspace](reports/screenshots/03_workspace.png)
+
+### Model Registry
+![Model Registry](reports/screenshots/02_model_registry.png)
+
+### Pipeline Completado
+![Pipeline](reports/screenshots/01_pipeline_completado.png)
+
+### Historial de Experimentos
+![Experimentos](reports/screenshots/04_experiment_runs.png)
+
+
+---
+
 ## 👤 Autor
 
 **Marín Serrato Barrios**
