@@ -8,6 +8,7 @@
 ![MLflow](https://img.shields.io/badge/MLflow-2.19.0-orange)
 ![Azure ML](https://img.shields.io/badge/Azure%20ML-1.32.0-0078D4?logo=microsoftazure)
 ![Status](https://img.shields.io/badge/Status-Production-brightgreen)
+🚀 **[Ver Dashboard en Vivo](https://credit-risk-scoring-marin.streamlit.app)**
 
 ---
 
@@ -120,8 +121,6 @@ flowchart TD
 - **Git / GitHub** — control de versiones
 
 ---
-
-## 📁 Estructura del Proyecto
 
 ## 📁 Estructura del Proyecto
 
