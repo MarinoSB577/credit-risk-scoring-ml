@@ -80,43 +80,20 @@ segmento de riesgo.
 
 ---
 
+
 ## 🏗️ Arquitectura
 
-Datos (Kaggle)
-│
-▼
-┌─────────────────┐
-│   EDA + Feature │  notebooks/01, 02
-│   Engineering   │  WoE, DTI, variables comportamiento
-└────────┬────────┘
-│
-▼
-┌─────────────────┐
-│    Modelado     │  notebooks/03
-│  LightGBM +     │  AUC=0.768
-│  Scorecard      │
-└────────┬────────┘
-│
-▼
-┌─────────────────┐
-│     MLflow      │  notebooks/04
-│  Experiment     │  Tracking + Model Registry
-│  Tracking       │  Alias: "production"
-└────────┬────────┘
-│
-▼
-┌─────────────────┐
-│    Azure ML     │  notebooks/05
-│   Workspace     │  ws-credit-risk-ml
-│  Model Registry │  lightgbm-credit-risk v1
-└────────┬────────┘
-│
-▼
-┌─────────────────┐
-│  MLOps Pipeline │  notebooks/06
-│  prep → train   │  Reentrenamiento automatizado
-│  → eval → reg   │  Gate de calidad AUC ≥ 0.75
-└─────────────────┘
+```mermaid
+flowchart TD
+    A[📦 Dataset Kaggle\n307k solicitudes] --> B[🔍 EDA + Feature Engineering\nnotebooks/01, 02]
+    B --> C[🤖 Modelado\nLightGBM AUC=0.768\nnotebooks/03]
+    C --> D[📊 MLflow Tracking\nExperiment Registry\nnotebooks/04]
+    D --> E[☁️ Azure ML Workspace\nws-credit-risk-ml\nnotebooks/05]
+    E --> F[⚙️ MLOps Pipeline\nprep → train → evaluate → register\nnotebooks/06]
+    F --> G{AUC ≥ 0.75?}
+    G -->|✅ APROBADO| H[📋 Model Registry\nlightgbm-credit-risk v2]
+    G -->|❌ RECHAZADO| I[🚫 No se registra]
+```
 
 ---
 
@@ -146,34 +123,33 @@ Datos (Kaggle)
 
 ## 📁 Estructura del Proyecto
 
-credit-risk-scoring-ml/
-│
-├── 📁 notebooks/
-│   ├── 01_exploratory_analysis.ipynb   ← EDA completo
-│   ├── 02_feature_engineering.ipynb    ← WoE, DTI, features
-│   ├── 03_modeling.ipynb               ← LightGBM + Scorecard
-│   ├── 04_mlflow_integration.ipynb     ← Experiment tracking
-│   ├── 05_azure_ml_setup.ipynb         ← Azure ML workspace
-│   └── 06_pipeline.ipynb               ← MLOps pipeline
-│
-├── 📁 src/
-│   ├── 📁 endpoint/
-│   │   ├── score.py                    ← Scoring script (API)
-│   │   └── environment.yml             ← Dependencias Docker
-│   └── 📁 pipeline/
-│       ├── prep_data.py                ← Paso 1: preparación
-│       ├── train.py                    ← Paso 2: entrenamiento
-│       ├── evaluate.py                 ← Paso 3: evaluación
-│       └── register.py                 ← Paso 4: registro
-│
-├── 📁 data/
-│   ├── raw/                            ← Dataset original (no en repo)
-│   └── processed/                      ← Features engineered (no en repo)
-│
-├── 📁 reports/                         ← Gráficas y visualizaciones
-├── .gitignore
-├── requirements.txt
-└── README.md
+## 📁 Estructura del Proyecto
+
+```mermaid
+graph LR
+    A[credit-risk-scoring-ml] --> B[📓 notebooks/]
+    A --> C[🐍 src/]
+    A --> D[📁 data/]
+    A --> E[📊 reports/]
+    
+    B --> B1[01_exploratory_analysis]
+    B --> B2[02_feature_engineering]
+    B --> B3[03_modeling]
+    B --> B4[04_mlflow_integration]
+    B --> B5[05_azure_ml_setup]
+    B --> B6[06_pipeline]
+    
+    C --> C1[📁 endpoint/]
+    C --> C2[📁 pipeline/]
+    
+    C1 --> C1A[score.py]
+    C1 --> C1B[environment.yml]
+    
+    C2 --> C2A[prep_data.py]
+    C2 --> C2B[train.py]
+    C2 --> C2C[evaluate.py]
+    C2 --> C2D[register.py]
+```
 
 ---
 
