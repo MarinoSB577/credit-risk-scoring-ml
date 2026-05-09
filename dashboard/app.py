@@ -7,8 +7,6 @@ import anthropic
 import os
 import matplotlib.pyplot as plt
 from pathlib import Path
-
-from pathlib import Path
 from dotenv import load_dotenv
 
 # Cargar .env desde la raíz del proyecto
@@ -18,11 +16,8 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 os.environ.pop('SSL_CERT_FILE', None)
 os.environ.pop('SSL_CERT_DIR', None)
 
-
 # ─────────────────────────────────────────────
 # DICCIONARIO DE NOMBRES LEGIBLES PARA FEATURES
-# Traduce nombres técnicos del dataset a términos
-# comprensibles para analistas y clientes
 # ─────────────────────────────────────────────
 
 FEATURE_NAMES_ES = {
@@ -56,10 +51,26 @@ FEATURE_NAMES_ES = {
     "FLAG_WORK_PHONE": "Tiene teléfono de trabajo",
     "FLAG_PHONE": "Tiene teléfono fijo",
     "FLAG_EMAIL": "Tiene correo electrónico registrado",
+    "EXT_SOURCE_PROMEDIO": "Promedio de scores externos (Buró)",
+    "EXT_SOURCE_MIN": "Score externo mínimo (Buró)",
+    "EXT_SOURCE_MAX": "Score externo máximo (Buró)",
+    "RIESGO_EDAD_SCORE": "Score de riesgo por edad",
+    "REGION_RATING_CLIENT_W_CITY": "Calificación de riesgo región y ciudad",
+    "REGION_RATING_CLIENT": "Calificación de riesgo de la región",
+    "DAYS_LAST_PHONE_CHANGE": "Días desde último cambio de teléfono",
+    "DAYS_EMPLOYED_PERC": "Proporción antigüedad laboral / edad",
+    "INCOME_CREDIT_PERC": "Proporción ingreso / crédito",
+    "INCOME_PER_PERSON": "Ingreso por miembro del hogar",
+    "ANNUITY_INCOME_PERC": "Proporción pago mensual / ingreso",
+    "PAYMENT_RATE": "Tasa de pago mensual",
+    "BURO_DAYS_CREDIT_MAX": "Máximo días de crédito en Buró",
+    "BURO_DAYS_CREDIT_MEAN": "Promedio días de crédito en Buró",
+    "BURO_AMT_CREDIT_SUM": "Suma total créditos en Buró",
+    "PREV_AMT_ANNUITY_MEAN": "Promedio pago mensual créditos anteriores",
+    "PREV_DAYS_DECISION_MEAN": "Promedio días desde decisiones anteriores",
 }
 
 def get_feature_name(feature):
-    """Devuelve nombre legible de la feature o el nombre técnico si no está en el diccionario"""
     return FEATURE_NAMES_ES.get(feature, feature)
 
 # ─────────────────────────────────────────────
@@ -129,69 +140,42 @@ with tab1:
     with col1:
         st.subheader("📋 Datos Financieros")
         amt_income = st.number_input(
-            "Ingreso anual ($)",
-            min_value=10000,
-            max_value=1000000,
-            value=150000,
-            step=10000
+            "Ingreso anual ($)", min_value=10000, max_value=1000000,
+            value=150000, step=10000
         )
         amt_credit = st.number_input(
-            "Monto del crédito ($)",
-            min_value=10000,
-            max_value=4000000,
-            value=500000,
-            step=10000
+            "Monto del crédito ($)", min_value=10000, max_value=4000000,
+            value=500000, step=10000
         )
         amt_annuity = st.number_input(
-            "Anualidad ($)",
-            min_value=1000,
-            max_value=200000,
-            value=25000,
-            step=1000
+            "Anualidad ($)", min_value=1000, max_value=200000,
+            value=25000, step=1000
         )
 
     with col2:
         st.subheader("👤 Datos del Solicitante")
         days_birth = st.slider(
-            "Edad (años)",
-            min_value=18,
-            max_value=70,
-            value=35
+            "Edad (años)", min_value=18, max_value=70, value=35
         )
         days_employed = st.slider(
-            "Antigüedad laboral (años)",
-            min_value=0,
-            max_value=40,
-            value=5
+            "Antigüedad laboral (años)", min_value=0, max_value=40, value=5
         )
         ext_source_2 = st.slider(
-            "Score externo (Buró)",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.5,
-            step=0.01
+            "Score externo (Buró)", min_value=0.0, max_value=1.0,
+            value=0.5, step=0.01
         )
 
     with col3:
         st.subheader("📈 Historial Crediticio")
         ext_source_3 = st.slider(
-            "Score externo 2",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.5,
-            step=0.01
+            "Score externo 2", min_value=0.0, max_value=1.0,
+            value=0.5, step=0.01
         )
         bureau_active = st.number_input(
-            "Créditos activos en Buró",
-            min_value=0,
-            max_value=20,
-            value=2
+            "Créditos activos en Buró", min_value=0, max_value=20, value=2
         )
         bureau_overdue = st.number_input(
-            "Créditos vencidos en Buró",
-            min_value=0,
-            max_value=10,
-            value=0
+            "Créditos vencidos en Buró", min_value=0, max_value=10, value=0
         )
 
     st.divider()
@@ -200,17 +184,12 @@ with tab1:
         if model is None:
             st.error("⚠️ Modelo no disponible. Verifica la ruta del archivo.")
         else:
-            # Construir vector de features con valores por defecto
-            # para features no capturadas en el formulario
             try:
                 df_ref = load_reference_data()
                 feature_cols = [c for c in df_ref.columns
                                if c not in ["TARGET", "SK_ID_CURR"]]
-
-                # Crear fila con medianas como base
                 input_data = df_ref[feature_cols].median().to_frame().T
 
-                # Sobreescribir con valores del formulario
                 feature_map = {
                     "AMT_INCOME_TOTAL": amt_income,
                     "AMT_CREDIT": amt_credit,
@@ -225,39 +204,23 @@ with tab1:
                     if feature in input_data.columns:
                         input_data[feature] = value
 
-                # Predicción
                 pd_prob = model.predict_proba(input_data)[0][1]
                 score = int((1 - pd_prob) * 1000)
 
-                # Mostrar resultado
                 col_res1, col_res2, col_res3 = st.columns(3)
-
                 with col_res1:
-                    st.metric(
-                        label="Probabilidad de Incumplimiento",
-                        value=f"{pd_prob:.1%}"
-                    )
-
+                    st.metric("Probabilidad de Incumplimiento", f"{pd_prob:.1%}")
                 with col_res2:
-                    st.metric(
-                        label="Score de Crédito",
-                        value=f"{score} pts"
-                    )
-
+                    st.metric("Score de Crédito", f"{score} pts")
                 with col_res3:
                     if pd_prob < 0.10:
                         decision = "✅ APROBAR"
-                        color = "success"
                     elif pd_prob < 0.20:
                         decision = "⚠️ REVISAR"
-                        color = "warning"
                     else:
                         decision = "❌ RECHAZAR"
-                        color = "error"
+                    st.metric("Decisión Recomendada", decision)
 
-                    st.metric(label="Decisión Recomendada", value=decision)
-
-                # Barra de riesgo
                 st.progress(pd_prob, text=f"Nivel de riesgo: {pd_prob:.1%}")
 
             except Exception as e:
@@ -274,7 +237,6 @@ with tab2:
         df = load_reference_data()
 
         col1, col2, col3, col4 = st.columns(4)
-
         with col1:
             st.metric("Total Solicitudes", f"{len(df):,}")
         with col2:
@@ -288,7 +250,6 @@ with tab2:
         st.divider()
 
         col1, col2 = st.columns(2)
-
         with col1:
             st.subheader("Distribución del Target")
             target_counts = df["TARGET"].value_counts()
@@ -306,9 +267,7 @@ with tab2:
             fig, ax = plt.subplots()
             ax.hist(
                 df["AMT_INCOME_TOTAL"].clip(upper=500000),
-                bins=50,
-                color="#3498db",
-                alpha=0.7
+                bins=50, color="#3498db", alpha=0.7
             )
             ax.set_xlabel("Ingreso anual ($)")
             ax.set_ylabel("Frecuencia")
@@ -330,24 +289,12 @@ with tab3:
         st.subheader("📋 Información del Modelo")
         st.table(pd.DataFrame({
             "Parámetro": [
-                "Algoritmo",
-                "Versión",
-                "AUC ROC",
-                "Dataset",
-                "Features",
-                "Tasa de mora",
-                "Umbral de aprobación",
-                "Entorno"
+                "Algoritmo", "Versión", "AUC ROC", "Dataset",
+                "Features", "Tasa de mora", "Umbral de aprobación", "Entorno"
             ],
             "Valor": [
-                "LightGBM",
-                "lightgbm-credit-risk v1",
-                "0.768",
-                "Home Credit Default Risk",
-                "65",
-                "8.1%",
-                "PD < 10%",
-                "Azure ML"
+                "LightGBM", "lightgbm-credit-risk v1", "0.768",
+                "Home Credit Default Risk", "65", "8.1%", "PD < 10%", "Azure ML"
             ]
         }))
 
@@ -367,70 +314,37 @@ with tab3:
         st.success("✅ Evaluación — APROBADO (umbral 0.75)")
         st.success("✅ Registro — Azure ML Model Registry")
 
-        # ─────────────────────────────────────────────
+# ─────────────────────────────────────────────
 # TAB 4 — EXPLICACIÓN DEL AGENTE
 # ─────────────────────────────────────────────
 
 with tab4:
     st.header("🤖 Agente Explicador de Decisiones Crediticias")
     st.markdown("""
-    El agente analiza la predicción del modelo usando SHAP y genera una 
+    El agente analiza la predicción del modelo usando SHAP y genera una
     justificación en lenguaje natural citando normativa CNBV aplicable.
     """)
 
     # ─────────────────────────────────────────────
-    # FUNCIÓN: CALCULAR SHAP
+    # FUNCIONES
     # ─────────────────────────────────────────────
 
     @st.cache_data
     def get_shap_values(_model, _input_data):
-        """
-        Calcula valores SHAP para una predicción.
-        El guión bajo en los parámetros evita que Streamlit
-        intente hashear objetos no serializables (modelo, DataFrame)
-        """
-      
         explainer = shap.TreeExplainer(_model)
-        # LightGBM es compatible directamente con TreeExplainer
-        # sin necesidad de extraer el booster como XGBoost
-
         shap_values = explainer.shap_values(_input_data)
         return shap_values
 
-    # ─────────────────────────────────────────────
-    # FUNCIÓN: GENERAR EXPLICACIÓN CON CLAUDE
-    # ─────────────────────────────────────────────
-
     def generar_explicacion_agente(pd_prob, decision, top_features, input_data):
-        """
-        Genera explicación en lenguaje natural usando Claude API.
-        
-        Args:
-            pd_prob: probabilidad de incumplimiento (float)
-            decision: APROBAR / REVISAR / RECHAZAR (str)
-            top_features: lista de (feature, shap_value, valor_real)
-            input_data: DataFrame con datos del solicitante
-        """
-
-        # Construir descripción de features para el prompt
         features_texto = "\n".join([
-        f"  - {get_feature_name(feat)}: valor={val_real:.3f}, contribución SHAP={shap_val:+.4f} "
-        f"({'aumenta' if shap_val > 0 else 'reduce'} el riesgo)"
-        for feat, shap_val, val_real in top_features
+            f"  - {get_feature_name(feat)}: valor={val_real:.3f}, "
+            f"contribución SHAP={shap_val:+.4f} "
+            f"({'aumenta' if shap_val > 0 else 'reduce'} el riesgo)"
+            for feat, shap_val, val_real in top_features
         ])
 
-        # ─────────────────────────────────────────────
-        # PROMPT ENGINEERING
-        # El prompt incluye:
-        # 1. Rol del agente
-        # 2. Datos de la solicitud
-        # 3. Valores SHAP explicados
-        # 4. Normativa CNBV relevante embebida
-        # 5. Instrucciones de formato
-        # ─────────────────────────────────────────────
-
-        prompt = f"""Eres un analista experto en riesgo crediticio de una institución 
-financiera mexicana regulada por la CNBV. Tu rol es explicar las decisiones 
+        prompt = f"""Eres un analista experto en riesgo crediticio de una institución
+financiera mexicana regulada por la CNBV. Tu rol es explicar las decisiones
 del modelo de scoring de forma clara, profesional y regulatoriamente válida.
 
 DATOS DE LA SOLICITUD:
@@ -445,53 +359,66 @@ FACTORES DETERMINANTES (análisis SHAP):
 {features_texto}
 
 NORMATIVA CNBV APLICABLE:
-- Circular Única de Bancos, Art. 92: las instituciones deben evaluar 
-  la capacidad de pago del acreditado considerando ingresos, deudas 
+- Circular Única de Bancos, Art. 92: las instituciones deben evaluar
+  la capacidad de pago del acreditado considerando ingresos, deudas
   existentes y flujo de efectivo disponible.
-- Disposiciones CNBV sobre transparencia: el cliente tiene derecho a 
+- Disposiciones CNBV sobre transparencia: el cliente tiene derecho a
   conocer las razones de rechazo de su solicitud en términos comprensibles.
-- Criterios de calificación de cartera: la PD debe reflejar la probabilidad 
+- Criterios de calificación de cartera: la PD debe reflejar la probabilidad
   real de incumplimiento basada en características del acreditado y del crédito.
-- Basilea III: las instituciones deben mantener capital proporcional al 
+- Basilea III: las instituciones deben mantener capital proporcional al
   riesgo de sus carteras, lo que justifica umbrales de aprobación basados en PD.
 
 INSTRUCCIONES:
 1. Redacta una explicación profesional de máximo 200 palabras
 2. Menciona los 2-3 factores principales que determinaron la decisión
 3. Cita la normativa CNBV relevante de forma natural en el texto
-4. Si la decisión es RECHAZAR, incluye una recomendación constructiva para el solicitante
+4. Si la decisión es RECHAZAR, incluye una recomendación constructiva
 5. Si la decisión es REVISAR, indica qué información adicional podría ayudar
-6. Usa lenguaje claro que pueda entender tanto el analista como el cliente
-7. NO uses markdown, cursivas, negritas, asteriscos ni ningún formato especial
-8. NO uses paréntesis con números — escribe los números directamente en el texto
-9. Redacta únicamente en párrafos continuos con texto plano"""
+6. Usa lenguaje claro para analista y cliente
+7. NO uses markdown, cursivas, negritas ni asteriscos
+8. NO uses paréntesis con números
+9. Redacta en párrafos continuos con texto plano"""
 
-        # Llamar a Claude API
         os.environ.pop('SSL_CERT_FILE', None)
         os.environ.pop('SSL_CERT_DIR', None)
-
-        # En Streamlit Cloud los secrets se leen con st.secrets
-        # Localmente se leen desde el .env con os.environ
         api_key = st.secrets.get("ANTHROPIC_API_KEY", os.environ.get("ANTHROPIC_API_KEY"))
         client = anthropic.Anthropic(api_key=api_key)
-
         message = client.messages.create(
             model="claude-sonnet-4-6",
-            # claude-sonnet-4-6: balance óptimo entre calidad y velocidad
-            # para explicaciones de texto de longitud media
-            max_tokens=1000,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
+            max_tokens=600,
+            messages=[{"role": "user", "content": prompt}]
         )
-
         return message.content[0].text
 
     # ─────────────────────────────────────────────
-    # FORMULARIO DE EVALUACIÓN
+    # SELECTOR DE PERFIL BASE
     # ─────────────────────────────────────────────
 
-    st.subheader("Datos del Solicitante")
+    st.subheader("1️⃣ Perfil base del solicitante")
+    df_ref_perfiles = load_reference_data()
+
+    perfil_opciones = {
+        "🟢 Bajo riesgo — cliente con buen historial":
+            df_ref_perfiles[df_ref_perfiles['TARGET']==0].nsmallest(1, 'EXT_SOURCE_2'),
+        "🟡 Riesgo medio — cliente promedio del dataset":
+            df_ref_perfiles.sample(1, random_state=42),
+        "🔴 Alto riesgo — cliente con historial negativo":
+            df_ref_perfiles[df_ref_perfiles['TARGET']==1].nlargest(1, 'EXT_SOURCE_2'),
+    }
+
+    perfil_seleccionado = st.selectbox(
+        "Selecciona un perfil base para la evaluación:",
+        options=list(perfil_opciones.keys()),
+        index=0
+    )
+    st.divider()
+
+    # ─────────────────────────────────────────────
+    # FORMULARIO DE AJUSTE
+    # ─────────────────────────────────────────────
+
+    st.subheader("2️⃣ Ajusta los datos del solicitante")
 
     col1, col2, col3 = st.columns(3)
 
@@ -526,18 +453,56 @@ INSTRUCCIONES:
 
     st.divider()
 
+    # ─────────────────────────────────────────────
+    # POLÍTICA CREDITICIA
+    # ─────────────────────────────────────────────
+
+    st.subheader("3️⃣ Política crediticia")
+    umbral_aprobacion = st.slider(
+        "Umbral de aprobación (PD máxima para aprobar)",
+        min_value=0.05, max_value=0.40, value=0.10, step=0.01,
+        format="%.0f%%",
+        help="Conservador: 10% | Moderado: 20% | Agresivo: 30%",
+        key="umbral_aprobacion_tab4"
+    )
+
+    col_u1, col_u2, col_u3 = st.columns(3)
+    with col_u1:
+        st.metric("Umbral actual", f"{umbral_aprobacion:.0%}")
+    with col_u2:
+        if umbral_aprobacion <= 0.10:
+            st.metric("Política", "🔵 Conservadora")
+        elif umbral_aprobacion <= 0.20:
+            st.metric("Política", "🟡 Moderada")
+        else:
+            st.metric("Política", "🔴 Agresiva")
+    with col_u3:
+        try:
+            df_tmp = load_reference_data()
+            feature_cols_tmp = [c for c in df_tmp.columns
+                               if c not in ["TARGET", "SK_ID_CURR"]]
+            preds_tmp = model.predict_proba(df_tmp[feature_cols_tmp])[:, 1]
+            pct_aprueba = (preds_tmp < umbral_aprobacion).mean()
+            st.metric("% cartera que aprobaría", f"{pct_aprueba:.1%}")
+        except:
+            st.metric("% cartera que aprobaría", "N/A")
+
+    st.divider()
+
+    # ─────────────────────────────────────────────
+    # BOTÓN Y RESULTADOS
+    # ─────────────────────────────────────────────
+
     if st.button("🤖 Generar Análisis del Agente", type="primary"):
         if model is None:
             st.error("⚠️ Modelo no disponible.")
         else:
             try:
-                # Preparar input con medianas como base
-                df_ref = load_reference_data()
-                feature_cols = [c for c in df_ref.columns
+                perfil_base = perfil_opciones[perfil_seleccionado]
+                feature_cols = [c for c in perfil_base.columns
                                if c not in ["TARGET", "SK_ID_CURR"]]
-                input_data = df_ref[feature_cols].median().to_frame().T
+                input_data = perfil_base[feature_cols].copy()
 
-                # Sobreescribir con valores del formulario
                 feature_map = {
                     "AMT_INCOME_TOTAL": amt_income_ag,
                     "AMT_CREDIT": amt_credit_ag,
@@ -550,18 +515,16 @@ INSTRUCCIONES:
                     if feat in input_data.columns:
                         input_data[feat] = val
 
-                # ── Predicción ──
                 pd_prob = model.predict_proba(input_data)[0][1]
                 score = int((1 - pd_prob) * 1000)
 
-                if pd_prob < 0.10:
+                if pd_prob < umbral_aprobacion:
                     decision = "APROBAR"
-                elif pd_prob < 0.20:
+                elif pd_prob < umbral_aprobacion * 2:
                     decision = "REVISAR"
                 else:
                     decision = "RECHAZAR"
 
-                # ── Métricas principales ──
                 col_r1, col_r2, col_r3 = st.columns(3)
                 with col_r1:
                     st.metric("PD (Prob. Incumplimiento)", f"{pd_prob:.1%}")
@@ -572,20 +535,13 @@ INSTRUCCIONES:
 
                 st.divider()
 
-                # ── Calcular SHAP ──
                 with st.spinner("Calculando importancia de variables (SHAP)..."):
-                    # Obtener modelo base de LightGBM desde el wrapper de joblib
-                    lgbm_model = model
-                    shap_vals = get_shap_values(lgbm_model, input_data)
-
-                    # Para clasificación binaria, SHAP devuelve array
-                    # Tomar valores para la clase positiva (incumplimiento)
+                    shap_vals = get_shap_values(model, input_data)
                     if isinstance(shap_vals, list):
                         sv = shap_vals[1][0]
                     else:
                         sv = shap_vals[0]
 
-                    # Top 5 features por valor absoluto de SHAP
                     feature_names = input_data.columns.tolist()
                     shap_df = sorted(
                         zip(feature_names, sv, input_data.values[0]),
@@ -593,13 +549,11 @@ INSTRUCCIONES:
                         reverse=True
                     )[:5]
 
-                # ── Gráfica SHAP ──
                 st.subheader("📊 Variables que determinaron la decisión")
                 fig, ax = plt.subplots(figsize=(8, 3))
                 feats = [get_feature_name(x[0]) for x in shap_df]
                 vals = [x[1] for x in shap_df]
                 colors = ["#e74c3c" if v > 0 else "#2ecc71" for v in vals]
-                # Rojo = aumenta riesgo, Verde = reduce riesgo
                 ax.barh(feats[::-1], vals[::-1], color=colors[::-1])
                 ax.axvline(x=0, color="black", linewidth=0.8)
                 ax.set_xlabel("Contribución SHAP (+ aumenta riesgo, - reduce riesgo)")
@@ -609,14 +563,12 @@ INSTRUCCIONES:
 
                 st.divider()
 
-                # ── Generar explicación con Claude ──
                 st.subheader("📋 Justificación del Agente")
                 with st.spinner("Generando explicación regulatoria..."):
                     explicacion = generar_explicacion_agente(
                         pd_prob, decision, shap_df[:3], input_data
                     )
 
-                # Mostrar con estilo según decisión
                 if decision == "APROBAR":
                     st.success(explicacion)
                 elif decision == "REVISAR":
@@ -624,7 +576,6 @@ INSTRUCCIONES:
                 else:
                     st.error(explicacion)
 
-                # Pie de página regulatorio
                 st.caption(
                     "⚖️ Esta explicación es generada por IA con base en el modelo "
                     "LightGBM y normativa CNBV vigente. No sustituye el criterio "
