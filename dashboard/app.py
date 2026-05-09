@@ -582,6 +582,156 @@ INSTRUCCIONES:
                     "del analista de crédito ni constituye resolución definitiva."
                 )
 
+                # Guardar contexto para el chat conversacional
+                shap_resumen = ", ".join([
+                    f"{get_feature_name(f[0])}({f[1]:+.3f})"
+                    for f in shap_df[:3]
+                ])
+                st.session_state.contexto_evaluacion = {
+                    "perfil": perfil_seleccionado,
+                    "pd_prob": f"{pd_prob:.1%}",
+                    "score": score,
+                    "decision": decision,
+                    "umbral": f"{umbral_aprobacion:.0%}",
+                    "ingreso": int(amt_income_ag),
+                    "monto": int(amt_credit_ag),
+                    "edad": days_birth_ag,
+                    "antiguedad": days_employed_ag,
+                    "shap_resumen": shap_resumen
+                }
+
             except Exception as e:
                 st.error(f"Error en el análisis: {str(e)}")
                 st.exception(e)
+    
+    # ─────────────────────────────────────────────
+    # CHAT CONVERSACIONAL CON EL AGENTE
+    # ─────────────────────────────────────────────
+
+    st.divider()
+    st.subheader("💬 Conversa con el Agente")
+    st.markdown("""
+    Haz preguntas sobre la evaluación. El agente recuerda el contexto
+    del análisis anterior y puede explorar escenarios hipotéticos.
+    """)
+
+    # Inicializar historial de conversación en session_state
+    # session_state persiste entre interacciones sin recargar la app
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+    if "contexto_evaluacion" not in st.session_state:
+        st.session_state.contexto_evaluacion = None
+
+    # Botón para limpiar el historial
+    if st.button("🗑️ Limpiar conversación", key="limpiar_chat"):
+        st.session_state.chat_history = []
+        st.session_state.contexto_evaluacion = None
+        st.rerun()
+
+    # Mostrar historial de mensajes
+    for mensaje in st.session_state.chat_history:
+        with st.chat_message(mensaje["role"]):
+            st.write(mensaje["content"])
+
+    # Input del usuario
+    pregunta = st.chat_input(
+        "Pregunta al agente: ¿qué pasaría si...? ¿por qué...? ¿cómo mejorar...?"
+    )
+
+    if pregunta:
+        # Agregar pregunta al historial
+        st.session_state.chat_history.append({
+            "role": "user",
+            "content": pregunta
+        })
+
+        with st.chat_message("user"):
+            st.write(pregunta)
+
+        # Generar respuesta con contexto
+        with st.chat_message("assistant"):
+            with st.spinner("El agente está analizando..."):
+                try:
+                    # Construir contexto del análisis actual
+                    # si existe una evaluación previa
+                    contexto = ""
+                    if st.session_state.contexto_evaluacion:
+                        ctx = st.session_state.contexto_evaluacion
+                        contexto = f"""
+CONTEXTO DEL ANÁLISIS ACTUAL:
+- Perfil base: {ctx.get('perfil', 'No disponible')}
+- PD calculada: {ctx.get('pd_prob', 'N/D')}
+- Score: {ctx.get('score', 'N/D')} pts
+- Decisión: {ctx.get('decision', 'N/D')}
+- Umbral de aprobación: {ctx.get('umbral', 'N/D')}
+- Ingreso anual: {ctx.get('ingreso', 'N/D')} pesos
+- Monto solicitado: {ctx.get('monto', 'N/D')} pesos
+- Edad: {ctx.get('edad', 'N/D')} años
+- Antigüedad laboral: {ctx.get('antiguedad', 'N/D')} años
+- Top variables SHAP: {ctx.get('shap_resumen', 'N/D')}
+"""
+                    else:
+                        contexto = "No hay análisis previo. El usuario no ha generado una evaluación todavía."
+
+                    # Construir historial para la API
+                    mensajes_api = []
+                    for msg in st.session_state.chat_history[:-1]:
+                        mensajes_api.append({
+                            "role": msg["role"],
+                            "content": msg["content"]
+                        })
+                    mensajes_api.append({
+                        "role": "user",
+                        "content": pregunta
+                    })
+
+                    # Prompt del sistema con contexto
+                    system_prompt = f"""Eres un agente experto en riesgo crediticio de una institución
+financiera mexicana regulada por la CNBV. Tienes acceso al análisis
+crediticio más reciente y puedes responder preguntas sobre él.
+
+{contexto}
+
+NORMATIVA DE REFERENCIA:
+- Circular Única de Bancos CNBV, Art. 92: capacidad de pago
+- Basilea III: capital proporcional al riesgo
+- Disposiciones CNBV sobre transparencia al cliente
+
+INSTRUCCIONES:
+1. Responde de forma concisa y profesional (máximo 150 palabras)
+2. Si te preguntan sobre escenarios hipotéticos, razona sobre
+   cómo cambiarían las variables y el riesgo
+3. Cita normativa CNBV cuando sea relevante
+4. Si no tienes suficiente información, pide al usuario que
+   primero genere un análisis con el botón de arriba
+5. NO uses markdown, bullets ni formato especial
+6. Responde en párrafos continuos con texto plano
+7. Usa lenguaje claro para analista y cliente"""
+
+                    os.environ.pop('SSL_CERT_FILE', None)
+                    os.environ.pop('SSL_CERT_DIR', None)
+                    api_key = st.secrets.get(
+                        "ANTHROPIC_API_KEY",
+                        os.environ.get("ANTHROPIC_API_KEY")
+                    )
+                    client = anthropic.Anthropic(api_key=api_key)
+
+                    respuesta = client.messages.create(
+                        model="claude-sonnet-4-6",
+                        max_tokens=400,
+                        system=system_prompt,
+                        messages=mensajes_api
+                    )
+
+                    texto_respuesta = respuesta.content[0].text
+                    st.write(texto_respuesta)
+
+                    # Guardar respuesta en historial
+                    st.session_state.chat_history.append({
+                        "role": "assistant",
+                        "content": texto_respuesta
+                    })
+
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
+                
