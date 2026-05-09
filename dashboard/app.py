@@ -470,9 +470,10 @@ INSTRUCCIONES:
         os.environ.pop('SSL_CERT_FILE', None)
         os.environ.pop('SSL_CERT_DIR', None)
 
-        client = anthropic.Anthropic(
-            api_key=os.environ.get('ANTHROPIC_API_KEY')
-        )
+        # En Streamlit Cloud los secrets se leen con st.secrets
+        # Localmente se leen desde el .env con os.environ
+        api_key = st.secrets.get("ANTHROPIC_API_KEY", os.environ.get("ANTHROPIC_API_KEY"))
+        client = anthropic.Anthropic(api_key=api_key)
 
         message = client.messages.create(
             model="claude-sonnet-4-6",
