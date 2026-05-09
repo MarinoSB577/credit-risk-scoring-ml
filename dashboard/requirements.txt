@@ -7,3 +7,4 @@ matplotlib
 shap
 scikit-learn
 anthropic
+python-dotenv
