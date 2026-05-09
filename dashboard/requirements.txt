@@ -8,3 +8,4 @@ shap
 scikit-learn
 anthropic
 python-dotenv
+optbinning
