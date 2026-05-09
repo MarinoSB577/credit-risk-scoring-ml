@@ -14,9 +14,13 @@ dependencies:
     # MLflow para cargar el modelo en formato pyfunc
     - mlflow==2.19.0
 
+    - azureml-mlflow 
+
     # Manipulación de datos
     - pandas==2.2.1
     - numpy==1.26.4
 
     # SDK de Azure ML — requerido por el endpoint
     - azureml-defaults
+    - azure-ai-ml
+    - azure-identity
