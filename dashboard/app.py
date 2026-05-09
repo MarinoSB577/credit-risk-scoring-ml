@@ -96,6 +96,16 @@ def load_model():
 
 model = load_model()
 
+@st.cache_resource
+def load_scorecard():
+    scorecard_path = Path(__file__).parent / "models" / "scorecard_woe.pkl"
+    if not scorecard_path.exists():
+        return None
+    return joblib.load(scorecard_path)
+
+scorecard = load_scorecard()
+
+
 # ─────────────────────────────────────────────
 # CARGAR DATOS DE REFERENCIA
 # ─────────────────────────────────────────────
@@ -120,11 +130,12 @@ st.divider()
 # TABS PRINCIPALES
 # ─────────────────────────────────────────────
 
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🎯 Scoring en Tiempo Real",
     "📊 Análisis del Portfolio",
     "🔍 Métricas del Modelo",
-    "🤖 Explicación del Agente"
+    "🤖 Explicación del Agente",
+    "📋 Scorecard WoE"
 ])
 
 # ─────────────────────────────────────────────
@@ -735,3 +746,198 @@ INSTRUCCIONES:
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
                 
+# ─────────────────────────────────────────────
+# TAB 5 — SCORECARD WoE
+# ─────────────────────────────────────────────
+
+with tab5:
+    st.header("📋 Scorecard de Crédito con WoE")
+    st.markdown("""
+    Modelo regulatorio basado en Weight of Evidence (WoE).
+    Produce un score en puntos interpretable y auditable por la CNBV.
+    """)
+
+    if scorecard is None:
+        st.error("⚠️ Scorecard no disponible. Verifica la ruta del archivo.")
+    else:
+        # ─────────────────────────────────────────────
+        # FORMULARIO
+        # ─────────────────────────────────────────────
+
+        st.subheader("Datos del Solicitante")
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            sc_income = st.number_input(
+                "Ingreso anual ($)", min_value=10000, max_value=1000000,
+                value=150000, step=10000, key="sc_income"
+            )
+            sc_credit = st.number_input(
+                "Monto del crédito ($)", min_value=10000, max_value=4000000,
+                value=500000, step=10000, key="sc_credit"
+            )
+            sc_goods = st.number_input(
+                "Precio del bien ($)", min_value=10000, max_value=4000000,
+                value=450000, step=10000, key="sc_goods"
+            )
+
+        with col2:
+            sc_age = st.slider(
+                "Edad (años)", min_value=18, max_value=70,
+                value=35, key="sc_age"
+            )
+            sc_employed = st.slider(
+                "Antigüedad laboral (años)", min_value=0, max_value=40,
+                value=5, key="sc_employed"
+            )
+
+        with col3:
+            sc_ext2 = st.slider(
+                "Score externo Buró (fuente 2)", min_value=0.0, max_value=1.0,
+                value=0.5, step=0.01, key="sc_ext2"
+            )
+            sc_ext3 = st.slider(
+                "Score externo Buró (fuente 3)", min_value=0.0, max_value=1.0,
+                value=0.5, step=0.01, key="sc_ext3"
+            )
+
+        st.divider()
+
+        if st.button("📋 Calcular Scorecard", type="primary", key="sc_button"):
+            try:
+                # Cargar datos de referencia para obtener todas las features
+                df_ref = load_reference_data()
+                feature_cols = [c for c in df_ref.columns
+                               if c not in ["TARGET", "SK_ID_CURR"]]
+
+                # Base con medianas
+                input_sc = df_ref[feature_cols].median().to_frame().T
+
+                # Variables del scorecard que podemos controlar
+                input_sc["AMT_INCOME_TOTAL"] = sc_income
+                input_sc["AMT_CREDIT"] = sc_credit
+                input_sc["AMT_GOODS_PRICE"] = sc_goods
+                input_sc["DAYS_BIRTH"] = -sc_age * 365
+                input_sc["DAYS_EMPLOYED"] = -sc_employed * 365
+                input_sc["EXT_SOURCE_2"] = sc_ext2
+                input_sc["EXT_SOURCE_3"] = sc_ext3
+
+                # Recalcular variables derivadas con los nuevos valores
+                input_sc["EXT_SOURCE_PROMEDIO"] = (
+                    input_sc["EXT_SOURCE_2"] + input_sc["EXT_SOURCE_3"]
+                ) / 2
+                input_sc["RIESGO_EDAD_SCORE"] = (
+                    1 - input_sc["EXT_SOURCE_PROMEDIO"]
+                ) * (1 + abs(input_sc["DAYS_BIRTH"]) / (70 * 365))
+
+                # Variables del scorecard
+                VARIABLES_SCORECARD = [
+                    "EXT_SOURCE_PROMEDIO", "RIESGO_EDAD_SCORE",
+                    "EXT_SOURCE_3", "EXT_SOURCE_2", "DAYS_EMPLOYED",
+                    "AMT_GOODS_PRICE", "DAYS_BIRTH", "AMT_CREDIT"
+                ]
+
+                input_scorecard = input_sc[VARIABLES_SCORECARD]
+
+                # Calcular score
+                score_pts = scorecard.score(input_scorecard)[0]
+                proba = scorecard.predict_proba(input_scorecard)[0][1]
+
+                # Decisión según umbrales calibrados
+                if score_pts >= 570:
+                    decision = "APROBAR"
+                    mora_esperada = "3.3%"
+                elif score_pts >= 545:
+                    decision = "REVISAR"
+                    mora_esperada = "8.1%"
+                else:
+                    decision = "RECHAZAR"
+                    mora_esperada = "19.0%"
+
+                # Mostrar resultado principal
+                col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+                with col_r1:
+                    st.metric("Score", f"{score_pts:.0f} pts")
+                with col_r2:
+                    st.metric("PD", f"{proba:.1%}")
+                with col_r3:
+                    st.metric("Decisión", decision)
+                with col_r4:
+                    st.metric("Mora esperada en segmento", mora_esperada)
+
+                # Barra de score con umbrales
+                st.divider()
+                st.subheader("📊 Posición en la escala de score")
+
+                fig, ax = plt.subplots(figsize=(10, 2))
+                ax.barh(["Score"], [627-489], left=489,
+                        color="#f0f0f0", height=0.4)
+                ax.barh(["Score"], [545-489], left=489,
+                        color="#e74c3c", height=0.4, alpha=0.6,
+                        label="RECHAZAR (<545)")
+                ax.barh(["Score"], [570-545], left=545,
+                        color="#f39c12", height=0.4, alpha=0.6,
+                        label="REVISAR (545-570)")
+                ax.barh(["Score"], [627-570], left=570,
+                        color="#2ecc71", height=0.4, alpha=0.6,
+                        label="APROBAR (≥570)")
+                ax.axvline(x=score_pts, color="black",
+                           linewidth=3, label=f"Tu score: {score_pts:.0f}")
+                ax.set_xlim(489, 627)
+                ax.set_xlabel("Score (puntos)")
+                ax.set_title("Escala de score — mayor puntaje = menor riesgo")
+                ax.legend(loc="upper left", fontsize=8)
+                plt.tight_layout()
+                st.pyplot(fig)
+
+                # Tabla de contribución por variable
+                st.divider()
+                st.subheader("📋 Contribución por variable")
+                st.markdown("Cuántos puntos aporta cada variable a tu score total:")
+
+                tabla = scorecard.table(style="detailed")
+                contrib_data = []
+
+                for var in VARIABLES_SCORECARD:
+                    subtabla = tabla[tabla['Variable'] == var]
+                    if len(subtabla) == 0:
+                        continue
+                    val = input_scorecard[var].values[0]
+                    # Encontrar el bin correspondiente al valor
+                    for _, row in subtabla.iterrows():
+                        bin_str = str(row['Bin'])
+                        if 'Special' in bin_str or 'Missing' in bin_str:
+                            continue
+                        try:
+                            # Parsear el intervalo
+                            bin_str_clean = bin_str.replace('(', '').replace(')', '').replace('[', '').replace(']', '')
+                            parts = bin_str_clean.split(',')
+                            lb = float(parts[0].strip().replace('-inf', str(-np.inf)))
+                            ub = float(parts[1].strip().replace('inf', str(np.inf)))
+                            if lb <= val < ub:
+                                puntos = row.get('Points', row.get('Score', 0))
+                                contrib_data.append({
+                                    "Variable": FEATURE_NAMES_ES.get(var, var),
+                                    "Valor": f"{val:.3f}",
+                                    "Rango": row['Bin'],
+                                    "Puntos": f"{puntos:.1f}"
+                                })
+                                break
+                        except:
+                            continue
+
+                if contrib_data:
+                    df_contrib = pd.DataFrame(contrib_data)
+                    st.dataframe(df_contrib, use_container_width=True,
+                                hide_index=True)
+
+                # Nota regulatoria
+                st.caption(
+                    "⚖️ Scorecard basado en Weight of Evidence (WoE). "
+                    "Metodología auditable conforme a Circular Única de Bancos CNBV. "
+                    "AUC=0.728 | KS=0.340 | Variables: 8"
+                )
+
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+                st.exception(e)                
