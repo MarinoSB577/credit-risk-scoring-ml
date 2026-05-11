@@ -1,6 +1,5 @@
 FROM python:3.11-slim
 
-# Instalar dependencias del sistema que LightGBM requiere
 RUN apt-get update && apt-get install -y \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
@@ -11,7 +10,10 @@ COPY src/api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/api/ .
-COPY mlruns/ ./mlruns/
+COPY dashboard/models/ ./dashboard/models/
+
+# Ruta del modelo dentro del contenedor
+ENV MODEL_PATH=/app/dashboard/models/model.pkl
 
 EXPOSE 8000
 

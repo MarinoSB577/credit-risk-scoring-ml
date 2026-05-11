@@ -3,5 +3,6 @@
 
 # Incluir solo lo necesario para la API
 !src/api/
-!mlruns/
-!Dockerfile
+!dashboard/
+!dashboard/models/
+!dashboard/models/model.pkl
