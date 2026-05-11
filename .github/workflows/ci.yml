@@ -1,0 +1,41 @@
+name: CI — Credit Risk Scoring API
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias de la API
+        run: |
+          pip install --upgrade pip
+          pip install fastapi uvicorn pydantic pandas numpy \
+                      lightgbm==4.3.0 scikit-learn joblib \
+                      shap httpx pytest
+
+      - name: Lint — verificar sintaxis con flake8
+        run: |
+          pip install flake8
+          flake8 src/api/ --max-line-length=100 --ignore=E501,W503
+
+      - name: Tests — verificar endpoints
+        run: |
+          cd src/api
+          pytest ../../tests/test_api.py -v
+
+      - name: Build — construir imagen Docker
+        run: |
+          docker build -t credit-risk-api:ci .
