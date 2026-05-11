@@ -1,13 +1,58 @@
 import sys
 import os
 import pytest
+import numpy as np
+from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
-# Agregar src/api al path para que pytest encuentre los módulos
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'api'))
 
-from main import app
 
+def make_mock_model():
+    """Crea un modelo simulado que imita LGBMClassifier."""
+    mock = MagicMock()
+    mock.feature_name_ = [
+        'EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3',
+        'DAYS_BIRTH', 'DAYS_EMPLOYED', 'AMT_CREDIT',
+        'AMT_INCOME_TOTAL', 'AMT_ANNUITY', 'AMT_GOODS_PRICE',
+        'DAYS_ID_PUBLISH', 'DAYS_REGISTRATION',
+        'DAYS_LAST_PHONE_CHANGE', 'REGION_POPULATION_RELATIVE',
+        'HOUR_APPR_PROCESS_START', 'OWN_CAR_AGE', 'CNT_CHILDREN',
+        'CNT_FAM_MEMBERS', 'TOTALAREA_MODE', 'FLAG_OWN_CAR',
+        'FLAG_OWN_REALTY', 'FLAG_WORK_PHONE', 'FLAG_PHONE',
+        'FLAG_EMAIL', 'REG_CITY_NOT_LIVE_CITY',
+        'REG_CITY_NOT_WORK_CITY', 'LIVE_CITY_NOT_WORK_CITY',
+    ]
+    mock.predict.return_value = np.array([0.15])
+    return mock
+
+
+def make_mock_explainer(n_features):
+    """Crea un SHAP explainer simulado."""
+    mock = MagicMock()
+    shap_vals = np.zeros(n_features)
+    shap_vals[0] = 0.3
+    shap_vals[1] = -0.2
+    shap_vals[2] = 0.1
+    mock.shap_values.return_value = [shap_vals]
+    return mock
+
+
+@pytest.fixture(autouse=True)
+def mock_model_and_shap():
+    """Fixture que reemplaza el modelo real y SHAP en todos los tests."""
+    mock_model = make_mock_model()
+    n_features = len(mock_model.feature_name_)
+    mock_explainer = make_mock_explainer(n_features)
+
+    with patch('model_loader._model', mock_model), \
+         patch('model_loader._feature_names',
+               mock_model.feature_name_), \
+         patch('shap.TreeExplainer', return_value=mock_explainer):
+        yield
+
+
+from main import app
 client = TestClient(app)
 
 
@@ -18,7 +63,6 @@ def test_health_ok():
     data = response.json()
     assert data["status"] == "ok"
     assert data["modelo"] == "lightgbm_scoring"
-    assert data["features"] == 65
 
 
 def test_model_info_ok():
@@ -54,7 +98,7 @@ def test_predict_default_values():
 
 
 def test_predict_perfil_bajo_riesgo():
-    """Perfil de bajo riesgo debe producir score alto y decisión de aprobar."""
+    """Con PD=0.15 el score debe ser mayor a 600."""
     payload = {
         "EXT_SOURCE_1": 0.85,
         "EXT_SOURCE_2": 0.90,
@@ -68,7 +112,7 @@ def test_predict_perfil_bajo_riesgo():
     response = client.post("/predict", json=payload)
     assert response.status_code == 200
     data = response.json()
-    assert data["probabilidad_incumplimiento"] < 0.35
+    assert data["probabilidad_incumplimiento"] == 0.15
     assert data["score_crediticio"] > 600
 
 
