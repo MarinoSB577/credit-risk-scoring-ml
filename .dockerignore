@@ -1,0 +1,7 @@
+# Excluir todo por default
+*
+
+# Incluir solo lo necesario para la API
+!src/api/
+!mlruns/
+!Dockerfile

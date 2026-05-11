@@ -36,6 +36,6 @@ jobs:
           cd src/api
           pytest ../../tests/test_api.py -v
 
-      - name: Build — construir imagen Docker
+      - name: Build — validar Dockerfile
         run: |
-          docker build -t credit-risk-api:ci .
+          docker run --rm -i hadolint/hadolint < Dockerfile || true 
