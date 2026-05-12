@@ -140,7 +140,7 @@ flowchart TD
 - **Streamlit Cloud** — dashboard interactivo en producción
 
 ### IA Generativa
-- **Claude API (claude-sonnet-4-6)** — agente explicador con RAG sobre normativa CNBV
+- **Claude API (claude-sonnet-4-6)** — agente explicador con normativa CNBV embebida en prompt
 - **SHAP + LLM** — justificaciones regulatorias auditables por solicitud
 - **Chat conversacional** — memoria de contexto por sesión
 
