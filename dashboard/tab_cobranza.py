@@ -78,6 +78,8 @@ def cargar_metadata_ews():
 def cargar_rag():
     """
     Carga ChromaDB y el modelo de embeddings para RAG.
+    Si ChromaDB no tiene datos indexados, re-indexa
+    automáticamente desde los documentos en disco.
     Se cachea para no recargar en cada interacción.
     """
     try:
@@ -87,32 +89,177 @@ def cargar_rag():
 
         import chromadb
         from sentence_transformers import SentenceTransformer
+        from docx import Document as DocxDocument
+        import openpyxl
 
         # Cargar configuración
         config_path = MODELS_PATH / 'chroma_config.pkl'
         if not config_path.exists():
+            st.error("chroma_config.pkl no encontrado")
             return None, None, None
 
-        config = joblib.load(config_path)
+        config   = joblib.load(config_path)
+        chroma_path = config['chroma_path']
 
         # Inicializar ChromaDB
         chroma_client = chromadb.PersistentClient(
-            path=config['chroma_path']
+            path=chroma_path
         )
-        coleccion = chroma_client.get_collection(
-            config['collection_name']
-        )
+
+        COLLECTION_NAME = config['collection_name']
 
         # Cargar modelo de embeddings
         modelo_emb = SentenceTransformer(
             config['modelo_embeddings']
         )
 
+        # Verificar si la colección existe y tiene datos
+        colecciones = [
+            c.name for c in chroma_client.list_collections()
+        ]
+        necesita_indexar = (
+            COLLECTION_NAME not in colecciones or
+            chroma_client.get_collection(
+                COLLECTION_NAME
+            ).count() == 0
+        )
+
+        if necesita_indexar:
+            # Re-indexar documentos automáticamente
+            st.info("⚙️ Inicializando base de conocimiento RAG...")
+
+            if COLLECTION_NAME in colecciones:
+                chroma_client.delete_collection(COLLECTION_NAME)
+
+            coleccion = chroma_client.create_collection(
+                name     = COLLECTION_NAME,
+                metadata = {"version": "1.0"}
+            )
+
+            # Cargar y procesar documentos
+            docs_path = COLLECTIONS_PATH / 'documentos'
+            if not docs_path.exists():
+                st.error(
+                    f"Carpeta de documentos no encontrada: "
+                    f"{docs_path}"
+                )
+                return None, None, None
+
+            chunks_total = []
+            EXTENSIONES  = {'.docx', '.xlsx', '.txt'}
+
+            for archivo in sorted(os.listdir(docs_path)):
+                ext  = Path(archivo).suffix.lower()
+                if ext not in EXTENSIONES:
+                    continue
+
+                ruta_archivo = docs_path / archivo
+
+                try:
+                    if ext == '.docx':
+                        doc   = DocxDocument(str(ruta_archivo))
+                        texto = '\n'.join([
+                            p.text.strip()
+                            for p in doc.paragraphs
+                            if p.text.strip()
+                        ])
+                    elif ext == '.xlsx':
+                        wb    = openpyxl.load_workbook(
+                            str(ruta_archivo)
+                        )
+                        lineas = []
+                        for hoja in wb.sheetnames:
+                            ws      = wb[hoja]
+                            headers = []
+                            for i, fila in enumerate(
+                                ws.iter_rows(values_only=True)
+                            ):
+                                if i == 0:
+                                    headers = [
+                                        str(h) for h in fila if h
+                                    ]
+                                    continue
+                                if any(c for c in fila):
+                                    partes = [
+                                        f"{headers[j]}: {v}"
+                                        for j, v in enumerate(fila)
+                                        if v and j < len(headers)
+                                    ]
+                                    if partes:
+                                        lineas.append(
+                                            ' | '.join(partes)
+                                        )
+                        texto = '\n'.join(lineas)
+                    elif ext == '.txt':
+                        with open(
+                            ruta_archivo, 'r',
+                            encoding='utf-8', errors='ignore'
+                        ) as f:
+                            texto = f.read()
+
+                    # Dividir en chunks
+                    CHUNK_SIZE    = 800
+                    CHUNK_OVERLAP = 100
+                    inicio = 0
+
+                    while inicio < len(texto):
+                        fin = inicio + CHUNK_SIZE
+                        if fin < len(texto):
+                            ultimo = max(
+                                texto.rfind('.', inicio, fin),
+                                texto.rfind('\n', inicio, fin)
+                            )
+                            if ultimo > inicio:
+                                fin = ultimo + 1
+
+                        chunk = texto[inicio:fin].strip()
+                        if chunk:
+                            chunks_total.append({
+                                'id'      : f"{archivo}__chunk_{len(chunks_total):03d}",
+                                'texto'   : chunk,
+                                'archivo' : archivo,
+                            })
+                        inicio = fin - CHUNK_OVERLAP
+
+                except Exception as e:
+                    st.warning(f"Error procesando {archivo}: {e}")
+
+            # Indexar en ChromaDB
+            BATCH_SIZE = 10
+            for i in range(0, len(chunks_total), BATCH_SIZE):
+                lote       = chunks_total[i:i+BATCH_SIZE]
+                textos     = [c['texto']   for c in lote]
+                ids        = [c['id']      for c in lote]
+                metadatas  = [
+                    {'archivo': c['archivo']} for c in lote
+                ]
+                embeddings = modelo_emb.encode(
+                    textos, show_progress_bar=False
+                ).tolist()
+
+                coleccion.add(
+                    ids        = ids,
+                    documents  = textos,
+                    embeddings = embeddings,
+                    metadatas  = metadatas
+                )
+
+            st.success(
+                f"✅ Base de conocimiento inicializada: "
+                f"{len(chunks_total)} fragmentos indexados"
+            )
+
+        else:
+            coleccion = chroma_client.get_collection(
+                COLLECTION_NAME
+            )
+
         return coleccion, modelo_emb, config
 
     except Exception as e:
         st.error(f"Error cargando RAG: {e}")
         return None, None, None
+
 
 
 def obtener_api_key():
