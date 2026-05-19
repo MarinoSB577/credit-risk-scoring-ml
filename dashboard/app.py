@@ -130,12 +130,13 @@ st.divider()
 # TABS PRINCIPALES
 # ─────────────────────────────────────────────
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🎯 Scoring en Tiempo Real",
     "📊 Análisis del Portfolio",
     "🔍 Métricas del Modelo",
     "🤖 Explicación del Agente",
-    "📋 Scorecard WoE"
+    "📋 Scorecard WoE",
+    "🚨 Agente de Cobranza"
 ])
 
 # ─────────────────────────────────────────────
@@ -941,3 +942,11 @@ with tab5:
             except Exception as e:
                 st.error(f"Error: {str(e)}")
                 st.exception(e)                
+
+# ─────────────────────────────────────────────
+# TAB 6 — AGENTE DE COBRANZA
+# ─────────────────────────────────────────────
+from tab_cobranza import render_tab_cobranza
+
+with tab6:
+    render_tab_cobranza()
