@@ -1,4 +1,4 @@
-name: CI — Credit Risk Scoring API
+name: CI — Credit Risk Scoring API + Agente de Cobranza
 
 on:
   push:
@@ -26,16 +26,60 @@ jobs:
                       lightgbm==4.3.0 scikit-learn joblib \
                       shap httpx pytest
 
+      - name: Instalar dependencias del Agente de Cobranza
+        run: |
+          pip install chromadb==1.5.9 \
+                      sentence-transformers==5.5.0 \
+                      python-docx==1.2.0 \
+                      openpyxl \
+                      pymupdf
+
       - name: Lint — verificar sintaxis con flake8
         run: |
           pip install flake8
-          flake8 src/api/ --max-line-length=100 --ignore=E501,W503,W292,E402,F401
+          flake8 src/api/ --max-line-length=100 \
+                 --ignore=E501,W503,W292,E402,F401
 
-      - name: Tests — verificar endpoints
+      - name: Tests — verificar endpoints API
         run: |
           cd src/api
           pytest ../../tests/test_api.py -v
 
+      - name: Validar — documentos de cobranza existen
+        run: |
+          python -c "
+          import os
+          docs_path = 'src/collections/documentos'
+          assert os.path.exists(docs_path), \
+              f'Carpeta no encontrada: {docs_path}'
+          archivos = os.listdir(docs_path)
+          assert len(archivos) >= 6, \
+              f'Se esperan al menos 6 documentos, hay {len(archivos)}'
+          extensiones = {os.path.splitext(f)[1] for f in archivos}
+          assert '.docx' in extensiones, \
+              'No hay archivos .docx en la base de conocimiento'
+          print(f'✅ Base de conocimiento: {len(archivos)} documentos')
+          for f in sorted(archivos):
+              print(f'   {f}')
+          "
+
+      - name: Validar — modelos EWS existen
+        run: |
+          python -c "
+          import os
+          modelos = [
+              'dashboard/models/modelo_ews.pkl',
+              'dashboard/models/ews_metadata.pkl',
+              'dashboard/models/shap_ews_explainer.pkl',
+              'dashboard/models/chroma_config.pkl',
+          ]
+          for ruta in modelos:
+              assert os.path.exists(ruta), \
+                  f'Modelo no encontrado: {ruta}'
+              tam = os.path.getsize(ruta) / 1024
+              print(f'✅ {ruta} ({tam:.1f} KB)')
+          "
+
       - name: Build — validar Dockerfile
         run: |
-          docker run --rm -i hadolint/hadolint < Dockerfile || true 
+          docker run --rm -i hadolint/hadolint < Dockerfile || true
