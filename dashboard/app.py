@@ -5,6 +5,7 @@ import joblib
 import shap
 import anthropic
 import os
+import json
 import matplotlib.pyplot as plt
 from pathlib import Path
 from dotenv import load_dotenv
@@ -56,7 +57,6 @@ FEATURE_NAMES_ES = {
     "EXT_SOURCE_MAX": "Score externo máximo (Buró)",
     "RIESGO_EDAD_SCORE": "Score de riesgo por edad",
     "REGION_RATING_CLIENT_W_CITY": "Calificación de riesgo región y ciudad",
-    "REGION_RATING_CLIENT": "Calificación de riesgo de la región",
     "DAYS_LAST_PHONE_CHANGE": "Días desde último cambio de teléfono",
     "DAYS_EMPLOYED_PERC": "Proporción antigüedad laboral / edad",
     "INCOME_CREDIT_PERC": "Proporción ingreso / crédito",
@@ -105,7 +105,6 @@ def load_scorecard():
 
 scorecard = load_scorecard()
 
-
 # ─────────────────────────────────────────────
 # CARGAR DATOS DE REFERENCIA
 # ─────────────────────────────────────────────
@@ -114,6 +113,167 @@ scorecard = load_scorecard()
 def load_reference_data():
     df = pd.read_csv(Path(__file__).parent / "data" / "df_sample.csv")
     return df
+
+# ─────────────────────────────────────────────
+# CARGAR ESTADÍSTICAS DEL PORTAFOLIO
+# ─────────────────────────────────────────────
+
+@st.cache_data
+def load_portfolio_stats():
+    stats_path = Path(__file__).parent / "models" / "portfolio_stats.json"
+    if not stats_path.exists():
+        return {}
+    with open(stats_path, "r") as f:
+        return json.load(f)
+
+# ─────────────────────────────────────────────
+# FUNCIONES SHAP Y AGENTE
+# ─────────────────────────────────────────────
+
+@st.cache_data
+def get_shap_values(_model, _input_data):
+    explainer = shap.TreeExplainer(_model)
+    shap_values = explainer.shap_values(_input_data)
+    return shap_values
+
+
+def generar_explicacion_agente(pd_prob, decision, top_features, input_data):
+    """
+    Genera explicación regulatoria con valores reales del cliente
+    y referencia del portafolio para cada variable SHAP.
+    """
+    # ── Cargar estadísticas del portafolio ───────────────────
+    portfolio_stats = load_portfolio_stats()
+
+    # ── Función para interpretar cada variable ───────────────
+    def interpretar_valor(feat, val_real, shap_val):
+        nombre    = get_feature_name(feat)
+        direccion = "aumenta" if shap_val > 0 else "reduce"
+
+        if feat == 'DAYS_BIRTH':
+            val_interp = f"{abs(int(val_real)) // 365} años"
+            ref        = portfolio_stats.get(feat, {})
+            mediana    = abs(ref.get('mediana', 0)) / 365
+            comparacion = "por encima" if abs(val_real) / 365 > mediana else "por debajo"
+            return (f"{nombre}: {val_interp} "
+                    f"({comparacion} de la mediana del portafolio: {mediana:.0f} años) "
+                    f"→ {direccion} el riesgo (SHAP: {shap_val:+.4f})")
+
+        elif feat == 'DAYS_EMPLOYED':
+            val_interp  = f"{abs(int(val_real)) // 365} años de antigüedad"
+            ref         = portfolio_stats.get(feat, {})
+            mediana     = abs(ref.get('mediana', 0)) / 365
+            comparacion = "por encima" if abs(val_real) / 365 > mediana else "por debajo"
+            return (f"{nombre}: {val_interp} "
+                    f"({comparacion} de la mediana: {mediana:.0f} años) "
+                    f"→ {direccion} el riesgo (SHAP: {shap_val:+.4f})")
+
+        elif feat == 'AMT_CREDIT':
+            ref         = portfolio_stats.get(feat, {})
+            mediana     = ref.get('mediana', 0)
+            comparacion = "por encima" if val_real > mediana else "por debajo"
+            return (f"{nombre}: ${val_real:,.0f} MXN "
+                    f"({comparacion} de la mediana del portafolio: ${mediana:,.0f} MXN) "
+                    f"→ {direccion} el riesgo (SHAP: {shap_val:+.4f})")
+
+        elif feat == 'AMT_INCOME_TOTAL':
+            ref         = portfolio_stats.get(feat, {})
+            mediana     = ref.get('mediana', 0)
+            comparacion = "por encima" if val_real > mediana else "por debajo"
+            return (f"{nombre}: ${val_real:,.0f} MXN anuales "
+                    f"({comparacion} de la mediana: ${mediana:,.0f} MXN) "
+                    f"→ {direccion} el riesgo (SHAP: {shap_val:+.4f})")
+
+        elif feat == 'AMT_ANNUITY':
+            ref         = portfolio_stats.get(feat, {})
+            mediana     = ref.get('mediana', 0)
+            comparacion = "por encima" if val_real > mediana else "por debajo"
+            return (f"{nombre}: ${val_real:,.0f} MXN/mes "
+                    f"({comparacion} de la mediana: ${mediana:,.0f} MXN/mes) "
+                    f"→ {direccion} el riesgo (SHAP: {shap_val:+.4f})")
+
+        else:
+            ref = portfolio_stats.get(feat, {})
+            if ref.get('tipo') == 'numerica':
+                mediana = ref.get('mediana', None)
+                if mediana is not None:
+                    comparacion = "por encima" if val_real > mediana else "por debajo"
+                    return (f"{nombre}: {val_real:.4f} "
+                            f"({comparacion} de la mediana: {mediana:.4f}) "
+                            f"→ {direccion} el riesgo (SHAP: {shap_val:+.4f})")
+            return (f"{nombre}: {val_real:.4f} "
+                    f"→ {direccion} el riesgo (SHAP: {shap_val:+.4f})")
+
+    # ── Construir texto de variables enriquecido ─────────────
+    features_texto = "\n".join([
+        f"  {i+1}. {interpretar_valor(feat, val_real, shap_val)}"
+        for i, (feat, shap_val, val_real) in enumerate(top_features)
+    ])
+
+    # ── Calcular carga financiera ─────────────────────────────
+    try:
+        ingreso_mensual = input_data['AMT_INCOME_TOTAL'].values[0] / 12
+        cuota_mensual   = input_data['AMT_ANNUITY'].values[0]
+        carga_fin       = cuota_mensual / ingreso_mensual
+        carga_texto     = f"{carga_fin:.1%} del ingreso mensual"
+    except Exception:
+        carga_texto = "no calculada"
+
+    # ── Prompt enriquecido ────────────────────────────────────
+    prompt = f"""Eres un analista experto en riesgo crediticio de una institución
+financiera mexicana regulada por la CNBV. Tu rol es explicar las decisiones
+del modelo de scoring de forma clara, profesional y regulatoriamente válida.
+
+DATOS DE LA SOLICITUD:
+- Probabilidad de Incumplimiento (PD): {pd_prob:.1%}
+- Decisión del modelo: {decision}
+- Ingreso anual: ${int(input_data['AMT_INCOME_TOTAL'].values[0]):,} MXN
+- Monto solicitado: ${int(input_data['AMT_CREDIT'].values[0]):,} MXN
+- Cuota mensual: ${int(input_data['AMT_ANNUITY'].values[0]):,} MXN
+- Carga financiera: {carga_texto}
+- Edad: {abs(int(input_data['DAYS_BIRTH'].values[0])) // 365} años
+- Antigüedad laboral: {abs(int(input_data['DAYS_EMPLOYED'].values[0])) // 365} años
+
+FACTORES DETERMINANTES (análisis SHAP con referencia al portafolio):
+{features_texto}
+
+NORMATIVA CNBV APLICABLE:
+- Circular Única de Bancos, Art. 92: las instituciones deben evaluar
+  la capacidad de pago del acreditado considerando ingresos, deudas
+  existentes y flujo de efectivo disponible.
+- Disposiciones CNBV sobre transparencia: el cliente tiene derecho a
+  conocer las razones de rechazo de su solicitud en términos comprensibles.
+- Criterios de calificación de cartera: la PD debe reflejar la probabilidad
+  real de incumplimiento basada en características del acreditado y del crédito.
+- Basilea III: las instituciones deben mantener capital proporcional al
+  riesgo de sus carteras, lo que justifica umbrales de aprobación basados en PD.
+
+INSTRUCCIONES:
+1. Redacta una explicación profesional de máximo 200 palabras
+2. Menciona los 2-3 factores principales usando los valores REALES del cliente
+   y su comparación con el portafolio (por encima/por debajo de la mediana)
+3. Incluye la carga financiera ({carga_texto}) en el análisis si es relevante
+4. Cita la normativa CNBV relevante de forma natural en el texto
+5. Si la decisión es RECHAZAR, incluye una recomendación constructiva
+6. Si la decisión es REVISAR, indica qué información adicional podría ayudar
+7. Usa lenguaje claro para analista y cliente
+8. NO uses markdown, cursivas, negritas ni asteriscos
+9. Redacta en párrafos continuos con texto plano"""
+
+    os.environ.pop('SSL_CERT_FILE', None)
+    os.environ.pop('SSL_CERT_DIR', None)
+    api_key = st.secrets.get(
+        "ANTHROPIC_API_KEY",
+        os.environ.get("ANTHROPIC_API_KEY")
+    )
+    client  = anthropic.Anthropic(api_key=api_key)
+    message = client.messages.create(
+        model      = "claude-sonnet-4-20250514",
+        max_tokens = 500,
+        messages   = [{"role": "user", "content": prompt}]
+    )
+    return message.content[0].text
+
 
 # ─────────────────────────────────────────────
 # HEADER
@@ -339,72 +499,6 @@ with tab4:
     """)
 
     # ─────────────────────────────────────────────
-    # FUNCIONES
-    # ─────────────────────────────────────────────
-
-    @st.cache_data
-    def get_shap_values(_model, _input_data):
-        explainer = shap.TreeExplainer(_model)
-        shap_values = explainer.shap_values(_input_data)
-        return shap_values
-
-    def generar_explicacion_agente(pd_prob, decision, top_features, input_data):
-        features_texto = "\n".join([
-            f"  - {get_feature_name(feat)}: valor={val_real:.3f}, "
-            f"contribución SHAP={shap_val:+.4f} "
-            f"({'aumenta' if shap_val > 0 else 'reduce'} el riesgo)"
-            for feat, shap_val, val_real in top_features
-        ])
-
-        prompt = f"""Eres un analista experto en riesgo crediticio de una institución
-financiera mexicana regulada por la CNBV. Tu rol es explicar las decisiones
-del modelo de scoring de forma clara, profesional y regulatoriamente válida.
-
-DATOS DE LA SOLICITUD:
-- Probabilidad de Incumplimiento (PD): {pd_prob:.1%}
-- Decisión del modelo: {decision}
-- Ingreso anual: {int(input_data['AMT_INCOME_TOTAL'].values[0])} pesos
-- Monto solicitado: {int(input_data['AMT_CREDIT'].values[0])} pesos
-- Edad: {abs(int(input_data['DAYS_BIRTH'].values[0])) // 365} años
-- Antigüedad laboral: {abs(int(input_data['DAYS_EMPLOYED'].values[0])) // 365} años
-
-FACTORES DETERMINANTES (análisis SHAP):
-{features_texto}
-
-NORMATIVA CNBV APLICABLE:
-- Circular Única de Bancos, Art. 92: las instituciones deben evaluar
-  la capacidad de pago del acreditado considerando ingresos, deudas
-  existentes y flujo de efectivo disponible.
-- Disposiciones CNBV sobre transparencia: el cliente tiene derecho a
-  conocer las razones de rechazo de su solicitud en términos comprensibles.
-- Criterios de calificación de cartera: la PD debe reflejar la probabilidad
-  real de incumplimiento basada en características del acreditado y del crédito.
-- Basilea III: las instituciones deben mantener capital proporcional al
-  riesgo de sus carteras, lo que justifica umbrales de aprobación basados en PD.
-
-INSTRUCCIONES:
-1. Redacta una explicación profesional de máximo 200 palabras
-2. Menciona los 2-3 factores principales que determinaron la decisión
-3. Cita la normativa CNBV relevante de forma natural en el texto
-4. Si la decisión es RECHAZAR, incluye una recomendación constructiva
-5. Si la decisión es REVISAR, indica qué información adicional podría ayudar
-6. Usa lenguaje claro para analista y cliente
-7. NO uses markdown, cursivas, negritas ni asteriscos
-8. NO uses paréntesis con números
-9. Redacta en párrafos continuos con texto plano"""
-
-        os.environ.pop('SSL_CERT_FILE', None)
-        os.environ.pop('SSL_CERT_DIR', None)
-        api_key = st.secrets.get("ANTHROPIC_API_KEY", os.environ.get("ANTHROPIC_API_KEY"))
-        client = anthropic.Anthropic(api_key=api_key)
-        message = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=600,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return message.content[0].text
-
-    # ─────────────────────────────────────────────
     # SELECTOR DE PERFIL BASE
     # ─────────────────────────────────────────────
 
@@ -497,7 +591,7 @@ INSTRUCCIONES:
             preds_tmp = model.predict_proba(df_tmp[feature_cols_tmp])[:, 1]
             pct_aprueba = (preds_tmp < umbral_aprobacion).mean()
             st.metric("% cartera que aprobaría", f"{pct_aprueba:.1%}")
-        except:
+        except Exception:
             st.metric("% cartera que aprobaría", "N/A")
 
     st.divider()
@@ -511,25 +605,25 @@ INSTRUCCIONES:
             st.error("⚠️ Modelo no disponible.")
         else:
             try:
-                perfil_base = perfil_opciones[perfil_seleccionado]
+                perfil_base  = perfil_opciones[perfil_seleccionado]
                 feature_cols = [c for c in perfil_base.columns
                                if c not in ["TARGET", "SK_ID_CURR"]]
-                input_data = perfil_base[feature_cols].copy()
+                input_data   = perfil_base[feature_cols].copy()
 
                 feature_map = {
                     "AMT_INCOME_TOTAL": amt_income_ag,
-                    "AMT_CREDIT": amt_credit_ag,
-                    "DAYS_BIRTH": -days_birth_ag * 365,
-                    "DAYS_EMPLOYED": -days_employed_ag * 365,
-                    "EXT_SOURCE_2": ext_source_2_ag,
-                    "EXT_SOURCE_3": ext_source_3_ag,
+                    "AMT_CREDIT"      : amt_credit_ag,
+                    "DAYS_BIRTH"      : -days_birth_ag * 365,
+                    "DAYS_EMPLOYED"   : -days_employed_ag * 365,
+                    "EXT_SOURCE_2"    : ext_source_2_ag,
+                    "EXT_SOURCE_3"    : ext_source_3_ag,
                 }
                 for feat, val in feature_map.items():
                     if feat in input_data.columns:
                         input_data[feat] = val
 
                 pd_prob = model.predict_proba(input_data)[0][1]
-                score = int((1 - pd_prob) * 1000)
+                score   = int((1 - pd_prob) * 1000)
 
                 if pd_prob < umbral_aprobacion:
                     decision = "APROBAR"
@@ -564,8 +658,8 @@ INSTRUCCIONES:
 
                 st.subheader("📊 Variables que determinaron la decisión")
                 fig, ax = plt.subplots(figsize=(8, 3))
-                feats = [get_feature_name(x[0]) for x in shap_df]
-                vals = [x[1] for x in shap_df]
+                feats  = [get_feature_name(x[0]) for x in shap_df]
+                vals   = [x[1] for x in shap_df]
                 colors = ["#e74c3c" if v > 0 else "#2ecc71" for v in vals]
                 ax.barh(feats[::-1], vals[::-1], color=colors[::-1])
                 ax.axvline(x=0, color="black", linewidth=0.8)
@@ -601,14 +695,14 @@ INSTRUCCIONES:
                     for f in shap_df[:3]
                 ])
                 st.session_state.contexto_evaluacion = {
-                    "perfil": perfil_seleccionado,
-                    "pd_prob": f"{pd_prob:.1%}",
-                    "score": score,
-                    "decision": decision,
-                    "umbral": f"{umbral_aprobacion:.0%}",
-                    "ingreso": int(amt_income_ag),
-                    "monto": int(amt_credit_ag),
-                    "edad": days_birth_ag,
+                    "perfil"    : perfil_seleccionado,
+                    "pd_prob"   : f"{pd_prob:.1%}",
+                    "score"     : score,
+                    "decision"  : decision,
+                    "umbral"    : f"{umbral_aprobacion:.0%}",
+                    "ingreso"   : int(amt_income_ag),
+                    "monto"     : int(amt_credit_ag),
+                    "edad"      : days_birth_ag,
                     "antiguedad": days_employed_ag,
                     "shap_resumen": shap_resumen
                 }
@@ -616,7 +710,7 @@ INSTRUCCIONES:
             except Exception as e:
                 st.error(f"Error en el análisis: {str(e)}")
                 st.exception(e)
-    
+
     # ─────────────────────────────────────────────
     # CHAT CONVERSACIONAL CON EL AGENTE
     # ─────────────────────────────────────────────
@@ -628,45 +722,35 @@ INSTRUCCIONES:
     del análisis anterior y puede explorar escenarios hipotéticos.
     """)
 
-    # Inicializar historial de conversación en session_state
-    # session_state persiste entre interacciones sin recargar la app
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
     if "contexto_evaluacion" not in st.session_state:
         st.session_state.contexto_evaluacion = None
 
-    # Botón para limpiar el historial
     if st.button("🗑️ Limpiar conversación", key="limpiar_chat"):
         st.session_state.chat_history = []
         st.session_state.contexto_evaluacion = None
         st.rerun()
 
-    # Mostrar historial de mensajes
     for mensaje in st.session_state.chat_history:
         with st.chat_message(mensaje["role"]):
             st.write(mensaje["content"])
 
-    # Input del usuario
     pregunta = st.chat_input(
         "Pregunta al agente: ¿qué pasaría si...? ¿por qué...? ¿cómo mejorar...?"
     )
 
     if pregunta:
-        # Agregar pregunta al historial
         st.session_state.chat_history.append({
-            "role": "user",
-            "content": pregunta
+            "role": "user", "content": pregunta
         })
 
         with st.chat_message("user"):
             st.write(pregunta)
 
-        # Generar respuesta con contexto
         with st.chat_message("assistant"):
             with st.spinner("El agente está analizando..."):
                 try:
-                    # Construir contexto del análisis actual
-                    # si existe una evaluación previa
                     contexto = ""
                     if st.session_state.contexto_evaluacion:
                         ctx = st.session_state.contexto_evaluacion
@@ -684,42 +768,28 @@ CONTEXTO DEL ANÁLISIS ACTUAL:
 - Top variables SHAP: {ctx.get('shap_resumen', 'N/D')}
 """
                     else:
-                        contexto = "No hay análisis previo. El usuario no ha generado una evaluación todavía."
+                        contexto = "No hay análisis previo."
 
-                    # Construir historial para la API
                     mensajes_api = []
                     for msg in st.session_state.chat_history[:-1]:
                         mensajes_api.append({
                             "role": msg["role"],
                             "content": msg["content"]
                         })
-                    mensajes_api.append({
-                        "role": "user",
-                        "content": pregunta
-                    })
+                    mensajes_api.append({"role": "user", "content": pregunta})
 
-                    # Prompt del sistema con contexto
                     system_prompt = f"""Eres un agente experto en riesgo crediticio de una institución
-financiera mexicana regulada por la CNBV. Tienes acceso al análisis
-crediticio más reciente y puedes responder preguntas sobre él.
+financiera mexicana regulada por la CNBV.
 
 {contexto}
-
-NORMATIVA DE REFERENCIA:
-- Circular Única de Bancos CNBV, Art. 92: capacidad de pago
-- Basilea III: capital proporcional al riesgo
-- Disposiciones CNBV sobre transparencia al cliente
 
 INSTRUCCIONES:
 1. Responde de forma concisa y profesional (máximo 150 palabras)
 2. Si te preguntan sobre escenarios hipotéticos, razona sobre
    cómo cambiarían las variables y el riesgo
 3. Cita normativa CNBV cuando sea relevante
-4. Si no tienes suficiente información, pide al usuario que
-   primero genere un análisis con el botón de arriba
-5. NO uses markdown, bullets ni formato especial
-6. Responde en párrafos continuos con texto plano
-7. Usa lenguaje claro para analista y cliente"""
+4. NO uses markdown, bullets ni formato especial
+5. Responde en párrafos continuos con texto plano"""
 
                     os.environ.pop('SSL_CERT_FILE', None)
                     os.environ.pop('SSL_CERT_DIR', None)
@@ -730,24 +800,22 @@ INSTRUCCIONES:
                     client = anthropic.Anthropic(api_key=api_key)
 
                     respuesta = client.messages.create(
-                        model="claude-sonnet-4-6",
-                        max_tokens=400,
-                        system=system_prompt,
-                        messages=mensajes_api
+                        model      = "claude-sonnet-4-20250514",
+                        max_tokens = 400,
+                        system     = system_prompt,
+                        messages   = mensajes_api
                     )
 
                     texto_respuesta = respuesta.content[0].text
                     st.write(texto_respuesta)
 
-                    # Guardar respuesta en historial
                     st.session_state.chat_history.append({
-                        "role": "assistant",
-                        "content": texto_respuesta
+                        "role": "assistant", "content": texto_respuesta
                     })
 
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
-                
+
 # ─────────────────────────────────────────────
 # TAB 5 — SCORECARD WoE
 # ─────────────────────────────────────────────
@@ -762,10 +830,6 @@ with tab5:
     if scorecard is None:
         st.error("⚠️ Scorecard no disponible. Verifica la ruta del archivo.")
     else:
-        # ─────────────────────────────────────────────
-        # FORMULARIO
-        # ─────────────────────────────────────────────
-
         st.subheader("Datos del Solicitante")
         col1, col2, col3 = st.columns(3)
 
@@ -807,24 +871,19 @@ with tab5:
 
         if st.button("📋 Calcular Scorecard", type="primary", key="sc_button"):
             try:
-                # Cargar datos de referencia para obtener todas las features
                 df_ref = load_reference_data()
                 feature_cols = [c for c in df_ref.columns
                                if c not in ["TARGET", "SK_ID_CURR"]]
-
-                # Base con medianas
                 input_sc = df_ref[feature_cols].median().to_frame().T
 
-                # Variables del scorecard que podemos controlar
-                input_sc["AMT_INCOME_TOTAL"] = sc_income
-                input_sc["AMT_CREDIT"] = sc_credit
-                input_sc["AMT_GOODS_PRICE"] = sc_goods
-                input_sc["DAYS_BIRTH"] = -sc_age * 365
-                input_sc["DAYS_EMPLOYED"] = -sc_employed * 365
-                input_sc["EXT_SOURCE_2"] = sc_ext2
-                input_sc["EXT_SOURCE_3"] = sc_ext3
+                input_sc["AMT_INCOME_TOTAL"]  = sc_income
+                input_sc["AMT_CREDIT"]        = sc_credit
+                input_sc["AMT_GOODS_PRICE"]   = sc_goods
+                input_sc["DAYS_BIRTH"]        = -sc_age * 365
+                input_sc["DAYS_EMPLOYED"]     = -sc_employed * 365
+                input_sc["EXT_SOURCE_2"]      = sc_ext2
+                input_sc["EXT_SOURCE_3"]      = sc_ext3
 
-                # Recalcular variables derivadas con los nuevos valores
                 input_sc["EXT_SOURCE_PROMEDIO"] = (
                     input_sc["EXT_SOURCE_2"] + input_sc["EXT_SOURCE_3"]
                 ) / 2
@@ -832,7 +891,6 @@ with tab5:
                     1 - input_sc["EXT_SOURCE_PROMEDIO"]
                 ) * (1 + abs(input_sc["DAYS_BIRTH"]) / (70 * 365))
 
-                # Variables del scorecard
                 VARIABLES_SCORECARD = [
                     "EXT_SOURCE_PROMEDIO", "RIESGO_EDAD_SCORE",
                     "EXT_SOURCE_3", "EXT_SOURCE_2", "DAYS_EMPLOYED",
@@ -840,23 +898,19 @@ with tab5:
                 ]
 
                 input_scorecard = input_sc[VARIABLES_SCORECARD]
-
-                # Calcular score
                 score_pts = scorecard.score(input_scorecard)[0]
-                proba = scorecard.predict_proba(input_scorecard)[0][1]
+                proba     = scorecard.predict_proba(input_scorecard)[0][1]
 
-                # Decisión según umbrales calibrados
                 if score_pts >= 570:
-                    decision = "APROBAR"
+                    decision      = "APROBAR"
                     mora_esperada = "3.3%"
                 elif score_pts >= 545:
-                    decision = "REVISAR"
+                    decision      = "REVISAR"
                     mora_esperada = "8.1%"
                 else:
-                    decision = "RECHAZAR"
+                    decision      = "RECHAZAR"
                     mora_esperada = "19.0%"
 
-                # Mostrar resultado principal
                 col_r1, col_r2, col_r3, col_r4 = st.columns(4)
                 with col_r1:
                     st.metric("Score", f"{score_pts:.0f} pts")
@@ -867,22 +921,17 @@ with tab5:
                 with col_r4:
                     st.metric("Mora esperada en segmento", mora_esperada)
 
-                # Barra de score con umbrales
                 st.divider()
                 st.subheader("📊 Posición en la escala de score")
 
                 fig, ax = plt.subplots(figsize=(10, 2))
-                ax.barh(["Score"], [627-489], left=489,
-                        color="#f0f0f0", height=0.4)
-                ax.barh(["Score"], [545-489], left=489,
-                        color="#e74c3c", height=0.4, alpha=0.6,
-                        label="RECHAZAR (<545)")
-                ax.barh(["Score"], [570-545], left=545,
-                        color="#f39c12", height=0.4, alpha=0.6,
-                        label="REVISAR (545-570)")
-                ax.barh(["Score"], [627-570], left=570,
-                        color="#2ecc71", height=0.4, alpha=0.6,
-                        label="APROBAR (≥570)")
+                ax.barh(["Score"], [627-489], left=489, color="#f0f0f0", height=0.4)
+                ax.barh(["Score"], [545-489], left=489, color="#e74c3c",
+                        height=0.4, alpha=0.6, label="RECHAZAR (<545)")
+                ax.barh(["Score"], [570-545], left=545, color="#f39c12",
+                        height=0.4, alpha=0.6, label="REVISAR (545-570)")
+                ax.barh(["Score"], [627-570], left=570, color="#2ecc71",
+                        height=0.4, alpha=0.6, label="APROBAR (≥570)")
                 ax.axvline(x=score_pts, color="black",
                            linewidth=3, label=f"Tu score: {score_pts:.0f}")
                 ax.set_xlim(489, 627)
@@ -892,12 +941,11 @@ with tab5:
                 plt.tight_layout()
                 st.pyplot(fig)
 
-                # Tabla de contribución por variable
                 st.divider()
                 st.subheader("📋 Contribución por variable")
                 st.markdown("Cuántos puntos aporta cada variable a tu score total:")
 
-                tabla = scorecard.table(style="detailed")
+                tabla       = scorecard.table(style="detailed")
                 contrib_data = []
 
                 for var in VARIABLES_SCORECARD:
@@ -905,14 +953,15 @@ with tab5:
                     if len(subtabla) == 0:
                         continue
                     val = input_scorecard[var].values[0]
-                    # Encontrar el bin correspondiente al valor
                     for _, row in subtabla.iterrows():
                         bin_str = str(row['Bin'])
                         if 'Special' in bin_str or 'Missing' in bin_str:
                             continue
                         try:
-                            # Parsear el intervalo
-                            bin_str_clean = bin_str.replace('(', '').replace(')', '').replace('[', '').replace(']', '')
+                            bin_str_clean = (bin_str.replace('(', '')
+                                                    .replace(')', '')
+                                                    .replace('[', '')
+                                                    .replace(']', ''))
                             parts = bin_str_clean.split(',')
                             lb = float(parts[0].strip().replace('-inf', str(-np.inf)))
                             ub = float(parts[1].strip().replace('inf', str(np.inf)))
@@ -920,12 +969,12 @@ with tab5:
                                 puntos = row.get('Points', row.get('Score', 0))
                                 contrib_data.append({
                                     "Variable": FEATURE_NAMES_ES.get(var, var),
-                                    "Valor": f"{val:.3f}",
-                                    "Rango": row['Bin'],
-                                    "Puntos": f"{puntos:.1f}"
+                                    "Valor"   : f"{val:.3f}",
+                                    "Rango"   : row['Bin'],
+                                    "Puntos"  : f"{puntos:.1f}"
                                 })
                                 break
-                        except:
+                        except Exception:
                             continue
 
                 if contrib_data:
@@ -933,7 +982,6 @@ with tab5:
                     st.dataframe(df_contrib, use_container_width=True,
                                 hide_index=True)
 
-                # Nota regulatoria
                 st.caption(
                     "⚖️ Scorecard basado en Weight of Evidence (WoE). "
                     "Metodología auditable conforme a Circular Única de Bancos CNBV. "
@@ -942,7 +990,7 @@ with tab5:
 
             except Exception as e:
                 st.error(f"Error: {str(e)}")
-                st.exception(e)                
+                st.exception(e)
 
 # ─────────────────────────────────────────────
 # TAB 6 — AGENTE DE COBRANZA

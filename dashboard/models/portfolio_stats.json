@@ -1,0 +1,326 @@
+{
+  "NAME_CONTRACT_TYPE": {
+    "moda": "Cash loans",
+    "tipo": "categorica"
+  },
+  "CODE_GENDER": {
+    "moda": "F",
+    "tipo": "categorica"
+  },
+  "FLAG_OWN_CAR": {
+    "moda": "N",
+    "tipo": "categorica"
+  },
+  "FLAG_OWN_REALTY": {
+    "moda": "Y",
+    "tipo": "categorica"
+  },
+  "CNT_CHILDREN": {
+    "media": 0.4171,
+    "mediana": 0.0,
+    "p25": 0.0,
+    "p75": 1.0,
+    "tipo": "numerica"
+  },
+  "AMT_INCOME_TOTAL": {
+    "media": 168797.9193,
+    "mediana": 147150.0,
+    "p25": 112500.0,
+    "p75": 202500.0,
+    "tipo": "numerica"
+  },
+  "AMT_CREDIT": {
+    "media": 599025.9997,
+    "mediana": 513531.0,
+    "p25": 270000.0,
+    "p75": 808650.0,
+    "tipo": "numerica"
+  },
+  "AMT_ANNUITY": {
+    "media": 27108.5739,
+    "mediana": 24903.0,
+    "p25": 16524.0,
+    "p75": 34596.0,
+    "tipo": "numerica"
+  },
+  "AMT_GOODS_PRICE": {
+    "media": 538396.2074,
+    "mediana": 450000.0,
+    "p25": 238500.0,
+    "p75": 679500.0,
+    "tipo": "numerica"
+  },
+  "NAME_TYPE_SUITE": {
+    "moda": "Unaccompanied",
+    "tipo": "categorica"
+  },
+  "NAME_INCOME_TYPE": {
+    "moda": "Working",
+    "tipo": "categorica"
+  },
+  "NAME_EDUCATION_TYPE": {
+    "moda": "Secondary / secondary special",
+    "tipo": "categorica"
+  },
+  "NAME_FAMILY_STATUS": {
+    "moda": "Married",
+    "tipo": "categorica"
+  },
+  "NAME_HOUSING_TYPE": {
+    "moda": "House / apartment",
+    "tipo": "categorica"
+  },
+  "REGION_POPULATION_RELATIVE": {
+    "media": 0.0209,
+    "mediana": 0.0188,
+    "p25": 0.01,
+    "p75": 0.0287,
+    "tipo": "numerica"
+  },
+  "DAYS_BIRTH": {
+    "media": -16036.9951,
+    "mediana": -15750.0,
+    "p25": -19682.0,
+    "p75": -12413.0,
+    "tipo": "numerica"
+  },
+  "DAYS_EMPLOYED": {
+    "media": 63815.0459,
+    "mediana": -1213.0,
+    "p25": -2760.0,
+    "p75": -289.0,
+    "tipo": "numerica"
+  },
+  "DAYS_REGISTRATION": {
+    "media": -4986.1203,
+    "mediana": -4504.0,
+    "p25": -7479.5,
+    "p75": -2010.0,
+    "tipo": "numerica"
+  },
+  "DAYS_ID_PUBLISH": {
+    "media": -2994.2024,
+    "mediana": -3254.0,
+    "p25": -4299.0,
+    "p75": -1720.0,
+    "tipo": "numerica"
+  },
+  "OWN_CAR_AGE": {
+    "media": 12.0611,
+    "mediana": 9.0,
+    "p25": 5.0,
+    "p75": 15.0,
+    "tipo": "numerica"
+  },
+  "FLAG_MOBIL": {
+    "media": 1.0,
+    "mediana": 1.0,
+    "p25": 1.0,
+    "p75": 1.0,
+    "tipo": "numerica"
+  },
+  "FLAG_EMP_PHONE": {
+    "media": 0.8199,
+    "mediana": 1.0,
+    "p25": 1.0,
+    "p75": 1.0,
+    "tipo": "numerica"
+  },
+  "FLAG_WORK_PHONE": {
+    "media": 0.1994,
+    "mediana": 0.0,
+    "p25": 0.0,
+    "p75": 0.0,
+    "tipo": "numerica"
+  },
+  "FLAG_CONT_MOBILE": {
+    "media": 0.9981,
+    "mediana": 1.0,
+    "p25": 1.0,
+    "p75": 1.0,
+    "tipo": "numerica"
+  },
+  "FLAG_PHONE": {
+    "media": 0.2811,
+    "mediana": 0.0,
+    "p25": 0.0,
+    "p75": 1.0,
+    "tipo": "numerica"
+  },
+  "FLAG_EMAIL": {
+    "media": 0.0567,
+    "mediana": 0.0,
+    "p25": 0.0,
+    "p75": 0.0,
+    "tipo": "numerica"
+  },
+  "OCCUPATION_TYPE": {
+    "moda": "Laborers",
+    "tipo": "categorica"
+  },
+  "CNT_FAM_MEMBERS": {
+    "media": 2.1527,
+    "mediana": 2.0,
+    "p25": 2.0,
+    "p75": 3.0,
+    "tipo": "numerica"
+  },
+  "REGION_RATING_CLIENT": {
+    "media": 2.0525,
+    "mediana": 2.0,
+    "p25": 2.0,
+    "p75": 2.0,
+    "tipo": "numerica"
+  },
+  "REGION_RATING_CLIENT_W_CITY": {
+    "media": 2.0315,
+    "mediana": 2.0,
+    "p25": 2.0,
+    "p75": 2.0,
+    "tipo": "numerica"
+  },
+  "WEEKDAY_APPR_PROCESS_START": {
+    "moda": "TUESDAY",
+    "tipo": "categorica"
+  },
+  "HOUR_APPR_PROCESS_START": {
+    "media": 12.0634,
+    "mediana": 12.0,
+    "p25": 10.0,
+    "p75": 14.0,
+    "tipo": "numerica"
+  },
+  "REG_REGION_NOT_LIVE_REGION": {
+    "media": 0.0151,
+    "mediana": 0.0,
+    "p25": 0.0,
+    "p75": 0.0,
+    "tipo": "numerica"
+  },
+  "REG_REGION_NOT_WORK_REGION": {
+    "media": 0.0508,
+    "mediana": 0.0,
+    "p25": 0.0,
+    "p75": 0.0,
+    "tipo": "numerica"
+  },
+  "LIVE_REGION_NOT_WORK_REGION": {
+    "media": 0.0407,
+    "mediana": 0.0,
+    "p25": 0.0,
+    "p75": 0.0,
+    "tipo": "numerica"
+  },
+  "REG_CITY_NOT_LIVE_CITY": {
+    "media": 0.0782,
+    "mediana": 0.0,
+    "p25": 0.0,
+    "p75": 0.0,
+    "tipo": "numerica"
+  },
+  "REG_CITY_NOT_WORK_CITY": {
+    "media": 0.2305,
+    "mediana": 0.0,
+    "p25": 0.0,
+    "p75": 0.0,
+    "tipo": "numerica"
+  },
+  "LIVE_CITY_NOT_WORK_CITY": {
+    "media": 0.1796,
+    "mediana": 0.0,
+    "p25": 0.0,
+    "p75": 0.0,
+    "tipo": "numerica"
+  },
+  "EXT_SOURCE_1": {
+    "media": 0.5021,
+    "mediana": 0.506,
+    "p25": 0.334,
+    "p75": 0.6751,
+    "tipo": "numerica"
+  },
+  "EXT_SOURCE_2": {
+    "media": 0.5144,
+    "mediana": 0.566,
+    "p25": 0.3925,
+    "p75": 0.6636,
+    "tipo": "numerica"
+  },
+  "EXT_SOURCE_3": {
+    "media": 0.5109,
+    "mediana": 0.5353,
+    "p25": 0.3706,
+    "p75": 0.6691,
+    "tipo": "numerica"
+  },
+  "OBS_30_CNT_SOCIAL_CIRCLE": {
+    "media": 1.4222,
+    "mediana": 0.0,
+    "p25": 0.0,
+    "p75": 2.0,
+    "tipo": "numerica"
+  },
+  "DEF_30_CNT_SOCIAL_CIRCLE": {
+    "media": 0.1434,
+    "mediana": 0.0,
+    "p25": 0.0,
+    "p75": 0.0,
+    "tipo": "numerica"
+  },
+  "OBS_60_CNT_SOCIAL_CIRCLE": {
+    "media": 1.4053,
+    "mediana": 0.0,
+    "p25": 0.0,
+    "p75": 2.0,
+    "tipo": "numerica"
+  },
+  "DEF_60_CNT_SOCIAL_CIRCLE": {
+    "media": 0.1,
+    "mediana": 0.0,
+    "p25": 0.0,
+    "p75": 0.0,
+    "tipo": "numerica"
+  },
+  "DAYS_LAST_PHONE_CHANGE": {
+    "media": -962.8588,
+    "mediana": -757.0,
+    "p25": -1570.0,
+    "p75": -274.0,
+    "tipo": "numerica"
+  },
+  "FLAG_DOCUMENT_3": {
+    "media": 0.71,
+    "mediana": 1.0,
+    "p25": 0.0,
+    "p75": 1.0,
+    "tipo": "numerica"
+  },
+  "AMT_REQ_CREDIT_BUREAU_DAY": {
+    "media": 0.007,
+    "mediana": 0.0,
+    "p25": 0.0,
+    "p75": 0.0,
+    "tipo": "numerica"
+  },
+  "AMT_REQ_CREDIT_BUREAU_MON": {
+    "media": 0.2674,
+    "mediana": 0.0,
+    "p25": 0.0,
+    "p75": 0.0,
+    "tipo": "numerica"
+  },
+  "AMT_REQ_CREDIT_BUREAU_QRT": {
+    "media": 0.2655,
+    "mediana": 0.0,
+    "p25": 0.0,
+    "p75": 0.0,
+    "tipo": "numerica"
+  },
+  "AMT_REQ_CREDIT_BUREAU_YEAR": {
+    "media": 1.9,
+    "mediana": 1.0,
+    "p25": 0.0,
+    "p75": 3.0,
+    "tipo": "numerica"
+  }
+}
