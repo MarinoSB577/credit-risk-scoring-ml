@@ -1,0 +1,118 @@
+2026-05-27 20:38:29,806 | INFO | ============================================================
+2026-05-27 20:38:29,807 | INFO | PSI TRIGGER — SISTEMA DE MONITOREO AUTOMÁTICO
+2026-05-27 20:38:29,807 | INFO | ============================================================
+2026-05-27 20:38:29,808 | INFO | Escenario    : SEVERO
+2026-05-27 20:38:29,809 | INFO | Dry-run      : True
+2026-05-27 20:38:29,810 | INFO | Umbral PSI   : 0.25
+2026-05-27 20:38:29,810 | INFO | Min variables: 3
+2026-05-27 20:38:29,810 | INFO | 
+[1/4] Cargando datos...
+2026-05-27 20:38:33,191 | INFO |   Referencia : 307,511 filas
+2026-05-27 20:38:33,192 | INFO |   Producción : 5,000 filas
+2026-05-27 20:38:33,192 | INFO | 
+[2/4] Calculando PSI por variable...
+2026-05-27 20:38:33,222 | INFO |   ✅ EXT_SOURCE_1                        PSI=0.0015 [ESTABLE]
+2026-05-27 20:38:33,252 | INFO |   ❌ EXT_SOURCE_2                        PSI=0.6673 [DRIFT_SEVERO]
+2026-05-27 20:38:33,279 | INFO |   ❌ EXT_SOURCE_3                        PSI=0.3368 [DRIFT_SEVERO]
+2026-05-27 20:38:33,302 | INFO |   ✅ DAYS_BIRTH                          PSI=0.0608 [ESTABLE]
+2026-05-27 20:38:33,322 | INFO |   ⚠️ DAYS_EMPLOYED                       PSI=0.1652 [MODERADO]
+2026-05-27 20:38:33,351 | INFO |   ✅ AMT_CREDIT                          PSI=0.0016 [ESTABLE]
+2026-05-27 20:38:33,377 | INFO |   ❌ AMT_INCOME_TOTAL                    PSI=0.6105 [DRIFT_SEVERO]
+2026-05-27 20:38:33,403 | INFO |   ✅ AMT_ANNUITY                         PSI=0.0007 [ESTABLE]
+2026-05-27 20:38:33,425 | INFO |   ✅ AMT_GOODS_PRICE                     PSI=0.0027 [ESTABLE]
+2026-05-27 20:38:33,445 | INFO |   ✅ DAYS_ID_PUBLISH                     PSI=0.0019 [ESTABLE]
+2026-05-27 20:38:33,471 | INFO |   ✅ DAYS_REGISTRATION                   PSI=0.0018 [ESTABLE]
+2026-05-27 20:38:33,495 | INFO |   ✅ DAYS_LAST_PHONE_CHANGE              PSI=0.0009 [ESTABLE]
+2026-05-27 20:38:33,523 | INFO |   ✅ REGION_POPULATION_RELATIVE          PSI=0.0012 [ESTABLE]
+2026-05-27 20:38:33,550 | INFO |   ✅ OWN_CAR_AGE                         PSI=0.0038 [ESTABLE]
+2026-05-27 20:38:33,562 | INFO |   ✅ CNT_CHILDREN                        PSI=0.0004 [ESTABLE]
+2026-05-27 20:38:33,589 | INFO |   ✅ CNT_FAM_MEMBERS                     PSI=0.0005 [ESTABLE]
+2026-05-27 20:38:33,603 | INFO |   ✅ FLAG_OWN_CAR                        PSI=0.0000 [ESTABLE]
+2026-05-27 20:38:33,615 | INFO |   ✅ FLAG_OWN_REALTY                     PSI=0.0000 [ESTABLE]
+2026-05-27 20:38:33,626 | INFO |   ✅ FLAG_WORK_PHONE                     PSI=0.0000 [ESTABLE]
+2026-05-27 20:38:33,640 | INFO |   ✅ FLAG_PHONE                          PSI=0.0000 [ESTABLE]
+2026-05-27 20:38:33,651 | INFO |   ✅ FLAG_EMAIL                          PSI=0.0000 [ESTABLE]
+2026-05-27 20:38:33,673 | INFO | 
+[3/4] Evaluando nivel de drift...
+2026-05-27 20:38:33,675 | INFO |   ❌ Drift severo  (PSI ≥ 0.25): 3 variables
+2026-05-27 20:38:33,675 | INFO |   ⚠️  Moderado     (PSI 0.10-0.25): 1 variables
+2026-05-27 20:38:33,676 | INFO |   ✅ Estable       (PSI < 0.10): 17 variables
+2026-05-27 20:38:33,676 | INFO |   📊 PSI máximo   : 0.6673 (EXT_SOURCE_2)
+2026-05-27 20:38:33,677 | INFO | 
+[4/4] Evaluando trigger de reentrenamiento...
+2026-05-27 20:38:33,678 | WARNING | 🔴 DRIFT CRÍTICO DETECTADO — 3 variables superan PSI=0.25
+2026-05-27 20:38:33,679 | INFO |    Disparando pipeline de reentrenamiento...
+2026-05-27 20:38:33,680 | INFO | 🔵 [DRY-RUN] Simulando trigger de Azure ML Pipeline
+2026-05-27 20:38:33,681 | INFO | 🔵 [DRY-RUN] Pipeline que se dispararía:
+2026-05-27 20:38:33,682 | INFO | 🔵 [DRY-RUN]   prep_data → train → evaluate → register
+2026-05-27 20:38:33,683 | INFO | 🔵 [DRY-RUN]   Gate: AUC ≥ 0.75
+2026-05-27 20:38:33,683 | INFO | 🔵 [DRY-RUN] En producción real esto ejecutaría:
+2026-05-27 20:38:33,685 | INFO | 🔵 [DRY-RUN]   ml_client.jobs.create_or_update(pipeline_job)
+2026-05-27 20:38:33,685 | INFO | ✅ Pipeline disparado — el modelo se reentrenará automáticamente
+2026-05-27 20:38:33,687 | INFO | 📋 Alerta guardada en: C:\Users\Marin\Documents\PROYECTO ML_OPS\credit-risk-scoring-ml\reports\alertas\alerta_20260527_203833.json
+2026-05-27 20:38:33,688 | INFO | 
+📢 RESUMEN DE ALERTA:
+   ⚠️ DRIFT DETECTADO en modelo de credit scoring. 3 variables con PSI crítico. Variable con mayor drift: EXT_SOURCE_2 (PSI=0.6673). Pipeline de reentrenamiento: DISPARADO.
+2026-05-27 20:38:33,688 | INFO | 
+============================================================
+2026-05-27 20:38:33,689 | INFO | RESUMEN FINAL
+2026-05-27 20:38:33,689 | INFO | ============================================================
+2026-05-27 20:38:33,690 | INFO |   Variables analizadas : 21
+2026-05-27 20:38:33,690 | INFO |   Drift severo         : 3
+2026-05-27 20:38:33,690 | INFO |   Drift moderado       : 1
+2026-05-27 20:38:33,691 | INFO |   Estables             : 17
+2026-05-27 20:38:33,691 | INFO |   Trigger pipeline     : ✅ SÍ
+2026-05-27 20:38:33,691 | INFO |   CSV guardado en      : C:\Users\Marin\Documents\PROYECTO ML_OPS\credit-risk-scoring-ml\reports\drift\psi_trigger_severo.csv
+2026-05-27 20:43:04,934 | INFO | ============================================================
+2026-05-27 20:43:04,935 | INFO | PSI TRIGGER — SISTEMA DE MONITOREO AUTOMÁTICO
+2026-05-27 20:43:04,936 | INFO | ============================================================
+2026-05-27 20:43:04,936 | INFO | Escenario    : LEVE
+2026-05-27 20:43:04,937 | INFO | Dry-run      : True
+2026-05-27 20:43:04,937 | INFO | Umbral PSI   : 0.25
+2026-05-27 20:43:04,937 | INFO | Min variables: 3
+2026-05-27 20:43:04,938 | INFO | 
+[1/4] Cargando datos...
+2026-05-27 20:43:07,110 | INFO |   Referencia : 307,511 filas
+2026-05-27 20:43:07,111 | INFO |   Producción : 5,000 filas
+2026-05-27 20:43:07,111 | INFO | 
+[2/4] Calculando PSI por variable...
+2026-05-27 20:43:07,135 | INFO |   ✅ EXT_SOURCE_1                        PSI=0.0015 [ESTABLE]
+2026-05-27 20:43:07,160 | INFO |   ✅ EXT_SOURCE_2                        PSI=0.0973 [ESTABLE]
+2026-05-27 20:43:07,186 | INFO |   ✅ EXT_SOURCE_3                        PSI=0.0402 [ESTABLE]
+2026-05-27 20:43:07,210 | INFO |   ✅ DAYS_BIRTH                          PSI=0.0072 [ESTABLE]
+2026-05-27 20:43:07,227 | INFO |   ✅ DAYS_EMPLOYED                       PSI=0.0173 [ESTABLE]
+2026-05-27 20:43:07,253 | INFO |   ✅ AMT_CREDIT                          PSI=0.0016 [ESTABLE]
+2026-05-27 20:43:07,277 | INFO |   ❌ AMT_INCOME_TOTAL                    PSI=0.4527 [DRIFT_SEVERO]
+2026-05-27 20:43:07,300 | INFO |   ✅ AMT_ANNUITY                         PSI=0.0007 [ESTABLE]
+2026-05-27 20:43:07,322 | INFO |   ✅ AMT_GOODS_PRICE                     PSI=0.0027 [ESTABLE]
+2026-05-27 20:43:07,341 | INFO |   ✅ DAYS_ID_PUBLISH                     PSI=0.0019 [ESTABLE]
+2026-05-27 20:43:07,367 | INFO |   ✅ DAYS_REGISTRATION                   PSI=0.0018 [ESTABLE]
+2026-05-27 20:43:07,390 | INFO |   ✅ DAYS_LAST_PHONE_CHANGE              PSI=0.0009 [ESTABLE]
+2026-05-27 20:43:07,416 | INFO |   ✅ REGION_POPULATION_RELATIVE          PSI=0.0012 [ESTABLE]
+2026-05-27 20:43:07,443 | INFO |   ✅ OWN_CAR_AGE                         PSI=0.0038 [ESTABLE]
+2026-05-27 20:43:07,454 | INFO |   ✅ CNT_CHILDREN                        PSI=0.0004 [ESTABLE]
+2026-05-27 20:43:07,476 | INFO |   ✅ CNT_FAM_MEMBERS                     PSI=0.0005 [ESTABLE]
+2026-05-27 20:43:07,486 | INFO |   ✅ FLAG_OWN_CAR                        PSI=0.0000 [ESTABLE]
+2026-05-27 20:43:07,497 | INFO |   ✅ FLAG_OWN_REALTY                     PSI=0.0000 [ESTABLE]
+2026-05-27 20:43:07,508 | INFO |   ✅ FLAG_WORK_PHONE                     PSI=0.0000 [ESTABLE]
+2026-05-27 20:43:07,517 | INFO |   ✅ FLAG_PHONE                          PSI=0.0000 [ESTABLE]
+2026-05-27 20:43:07,526 | INFO |   ✅ FLAG_EMAIL                          PSI=0.0000 [ESTABLE]
+2026-05-27 20:43:07,530 | INFO | 
+[3/4] Evaluando nivel de drift...
+2026-05-27 20:43:07,532 | INFO |   ❌ Drift severo  (PSI ≥ 0.25): 1 variables
+2026-05-27 20:43:07,532 | INFO |   ⚠️  Moderado     (PSI 0.10-0.25): 0 variables
+2026-05-27 20:43:07,533 | INFO |   ✅ Estable       (PSI < 0.10): 20 variables
+2026-05-27 20:43:07,533 | INFO |   📊 PSI máximo   : 0.4527 (AMT_INCOME_TOTAL)
+2026-05-27 20:43:07,534 | INFO | 
+[4/4] Evaluando trigger de reentrenamiento...
+2026-05-27 20:43:07,534 | WARNING | 🟡 DRIFT MODERADO — monitorear de cerca. No se dispara el pipeline automáticamente.
+2026-05-27 20:43:07,534 | INFO | 
+============================================================
+2026-05-27 20:43:07,535 | INFO | RESUMEN FINAL
+2026-05-27 20:43:07,535 | INFO | ============================================================
+2026-05-27 20:43:07,536 | INFO |   Variables analizadas : 21
+2026-05-27 20:43:07,536 | INFO |   Drift severo         : 1
+2026-05-27 20:43:07,536 | INFO |   Drift moderado       : 0
+2026-05-27 20:43:07,537 | INFO |   Estables             : 20
+2026-05-27 20:43:07,537 | INFO |   Trigger pipeline     : ❌ NO
+2026-05-27 20:43:07,537 | INFO |   CSV guardado en      : C:\Users\Marin\Documents\PROYECTO ML_OPS\credit-risk-scoring-ml\reports\drift\psi_trigger_leve.csv

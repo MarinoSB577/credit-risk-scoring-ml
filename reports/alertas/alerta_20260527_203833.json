@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-05-27T20:38:33.686204",
+  "tipo": "DRIFT_DETECTADO",
+  "severity": "HIGH",
+  "variables_criticas": 3,
+  "variables_moderadas": 1,
+  "psi_maximo": 0.6673,
+  "variable_mayor_drift": "EXT_SOURCE_2",
+  "trigger_pipeline": true,
+  "dry_run": true,
+  "recomendacion": "Revisión manual requerida.",
+  "notificacion": {
+    "email": "riesgo@institucion.com.mx",
+    "slack": "#alertas-mlops",
+    "mensaje": "⚠️ DRIFT DETECTADO en modelo de credit scoring. 3 variables con PSI crítico. Variable con mayor drift: EXT_SOURCE_2 (PSI=0.6673). Pipeline de reentrenamiento: DISPARADO."
+  }
+}
