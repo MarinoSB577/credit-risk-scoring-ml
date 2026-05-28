@@ -290,14 +290,15 @@ st.divider()
 # TABS PRINCIPALES
 # ─────────────────────────────────────────────
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "🎯 Scoring en Tiempo Real",
     "📊 Análisis del Portfolio",
     "🔍 Métricas del Modelo",
     "🤖 Explicación del Agente",
     "📋 Scorecard WoE",
     "🚨 Agente de Cobranza",
-    "🎯 Agente Ejecutivo"
+    "🎯 Agente Ejecutivo",
+    "📡 Métricas Vivas"
 ])
 
 # ─────────────────────────────────────────────
@@ -1007,3 +1008,11 @@ from tab_agente_ejecutivo import render_tab_agente_ejecutivo
 
 with tab7:
     render_tab_agente_ejecutivo()
+
+# ─────────────────────────────────────────────
+# TAB 8 — MÉTRICAS VIVAS
+# ─────────────────────────────────────────────
+from tab_metricas_vivas import render_tab_metricas_vivas
+
+with tab8:
+    render_tab_metricas_vivas()
