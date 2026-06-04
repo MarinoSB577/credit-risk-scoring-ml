@@ -5,6 +5,7 @@ import joblib
 import shap
 import anthropic
 import os
+import sys
 import json
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -127,7 +128,171 @@ def load_portfolio_stats():
         return json.load(f)
 
 # ─────────────────────────────────────────────
-# FUNCIONES SHAP Y AGENTE
+# RAG ORIGINACIÓN — CAMBIO 2
+# ─────────────────────────────────────────────
+
+@st.cache_resource
+def cargar_rag_originacion():
+    """
+    Carga ChromaDB y modelo de embeddings para RAG de originación.
+    Mismo patrón que cargar_rag() en tab_cobranza.py.
+    Si la colección no existe, retorna (None, None, None) y la función
+    generar_explicacion_agente() usa el fallback hardcodeado original.
+    """
+    try:
+        os.environ.pop('SSL_CERT_FILE', None)
+        os.environ.pop('SSL_CERT_DIR', None)
+
+        import chromadb
+        from sentence_transformers import SentenceTransformer
+
+        DASHBOARD_PATH   = Path(__file__).parent
+        BASE_PATH        = DASHBOARD_PATH.parent
+        MODELS_PATH      = DASHBOARD_PATH / 'models'
+        COLLECTIONS_PATH = BASE_PATH / 'src' / 'collections'
+
+        # Agregar src/collections al path
+        sys.path.insert(0, str(COLLECTIONS_PATH))
+
+        config_path = MODELS_PATH / 'chroma_config_originacion.pkl'
+        if not config_path.exists():
+            st.warning(
+                "⚠️ chroma_config_originacion.pkl no encontrado. "
+                "Ejecuta el notebook 12_indexacion_rag_originacion.ipynb primero."
+            )
+            return None, None, None
+
+        config      = joblib.load(config_path)
+        chroma_path = config['chroma_path']
+
+        chroma_client   = chromadb.PersistentClient(path=chroma_path)
+        modelo_emb      = SentenceTransformer(config['modelo_embeddings'])
+        COLLECTION_NAME = config['collection_name']
+
+        colecciones = [c.name for c in chroma_client.list_collections()]
+
+        if COLLECTION_NAME not in colecciones or \
+           chroma_client.get_collection(COLLECTION_NAME).count() == 0:
+            st.warning(
+                f"⚠️ Colección '{COLLECTION_NAME}' vacía o no encontrada. "
+                "Re-ejecuta el notebook 12 para re-indexar."
+            )
+            return None, None, None
+
+        coleccion = chroma_client.get_collection(COLLECTION_NAME)
+        return coleccion, modelo_emb, config
+
+    except Exception as e:
+        st.error(f"Error cargando RAG de originación: {e}")
+        return None, None, None
+
+
+# ─────────────────────────────────────────────
+# RAG ORIGINACIÓN — CAMBIO 3
+# ─────────────────────────────────────────────
+
+def consultar_rag_originacion(decision, pd_prob, top_features,
+                               coleccion, modelo_emb,
+                               n_resultados=3):
+    """
+    Búsqueda semántica en la base de conocimiento de originación.
+    Mismo patrón que consultar_rag_dashboard() en tab_cobranza.py.
+
+    Query: decisión + rango PD + variables SHAP principales.
+    Documento prioritario: según la decisión (aprobar/revisar/rechazar).
+    """
+    # ── Construir query semántica ────────────────────────────
+    variable_principal  = get_feature_name(top_features[0][0]) \
+                          if top_features else "historial crediticio"
+    variable_secundaria = get_feature_name(top_features[1][0]) \
+                          if len(top_features) > 1 else ""
+
+    rango_pd = (
+        "bajo riesgo aprobación criterios otorgamiento"
+        if pd_prob < 0.10 else
+        "riesgo medio revisión análisis adicional capacidad pago"
+        if pd_prob < 0.30 else
+        "alto riesgo rechazo incumplimiento reservas cartera"
+    )
+
+    query = (
+        f"decisión crédito {decision.lower()} "
+        f"{rango_pd} "
+        f"{variable_principal} {variable_secundaria} "
+        f"normativa CNBV explicabilidad"
+    )
+
+    # ── Documento prioritario según decisión ────────────────
+    prioridad_map = {
+        "APROBAR" : "criterios_otorgamiento.txt",
+        "REVISAR" : "criterios_otorgamiento.txt",
+        "RECHAZAR": "calificacion_cartera_CUB.pdf",
+    }
+    archivo_prio = prioridad_map.get(decision, "criterios_otorgamiento.txt")
+
+    embedding_q = modelo_emb.encode(
+        [query],
+        normalize_embeddings=True
+    ).tolist()
+
+    # ── Búsqueda prioritaria ─────────────────────────────────
+    try:
+        res_prio = coleccion.query(
+            query_embeddings = embedding_q,
+            n_results        = 1,
+            where            = {"source": archivo_prio}
+        )
+    except Exception:
+        res_prio = {"documents": [[]], "metadatas": [[]]}
+
+    # ── Búsqueda complementaria ──────────────────────────────
+    res_comp = coleccion.query(
+        query_embeddings = embedding_q,
+        n_results        = n_resultados,
+        where            = {"source": {"$ne": archivo_prio}}
+    )
+
+    # ── Combinar y deduplicar ────────────────────────────────
+    docs = []
+    if res_prio['documents'][0]:
+        docs.append({
+            'source'   : res_prio['metadatas'][0][0]['source'],
+            'contenido': res_prio['documents'][0][0],
+            'tipo'     : 'prioritario'
+        })
+
+    archivos_vistos = {d['source'] for d in docs}
+    for doc, meta in zip(
+        res_comp['documents'][0],
+        res_comp['metadatas'][0]
+    ):
+        if meta['source'] not in archivos_vistos:
+            docs.append({
+                'source'   : meta['source'],
+                'contenido': doc,
+                'tipo'     : 'complementario'
+            })
+            archivos_vistos.add(meta['source'])
+
+    # ── Formatear contexto para el prompt ───────────────────
+    partes = []
+    for doc in docs:
+        nombre = (doc['source']
+                  .replace('.txt', '').replace('.pdf', '')
+                  .replace('.docx', '').replace('.xlsx', '')
+                  .replace('_', ' ').title())
+        tipo   = "PRIORITARIO" if doc['tipo'] == 'prioritario' \
+                 else "Complementario"
+        partes.append(f"[{tipo} — {nombre}]\n{doc['contenido']}")
+
+    return {
+        'contexto_rag': "\n\n".join(partes),
+        'docs_usados' : [d['source'] for d in docs]
+    }
+
+
+# ─────────────────────────────────────────────
+# FUNCIONES SHAP Y AGENTE — CAMBIO 4
 # ─────────────────────────────────────────────
 
 @st.cache_data
@@ -137,10 +302,13 @@ def get_shap_values(_model, _input_data):
     return shap_values
 
 
-def generar_explicacion_agente(pd_prob, decision, top_features, input_data):
+def generar_explicacion_agente(pd_prob, decision, top_features,
+                                input_data,
+                                coleccion=None, modelo_emb=None):
     """
-    Genera explicación regulatoria con valores reales del cliente
-    y referencia del portafolio para cada variable SHAP.
+    Genera explicación regulatoria con valores reales del cliente,
+    referencia del portafolio y contexto RAG de normativa CNBV.
+    Si coleccion/modelo_emb son None, usa normativa hardcodeada (fallback).
     """
     # ── Cargar estadísticas del portafolio ───────────────────
     portfolio_stats = load_portfolio_stats()
@@ -151,9 +319,9 @@ def generar_explicacion_agente(pd_prob, decision, top_features, input_data):
         direccion = "aumenta" if shap_val > 0 else "reduce"
 
         if feat == 'DAYS_BIRTH':
-            val_interp = f"{abs(int(val_real)) // 365} años"
-            ref        = portfolio_stats.get(feat, {})
-            mediana    = abs(ref.get('mediana', 0)) / 365
+            val_interp  = f"{abs(int(val_real)) // 365} años"
+            ref         = portfolio_stats.get(feat, {})
+            mediana     = abs(ref.get('mediana', 0)) / 365
             comparacion = "por encima" if abs(val_real) / 365 > mediana else "por debajo"
             return (f"{nombre}: {val_interp} "
                     f"({comparacion} de la mediana del portafolio: {mediana:.0f} años) "
@@ -219,6 +387,27 @@ def generar_explicacion_agente(pd_prob, decision, top_features, input_data):
     except Exception:
         carga_texto = "no calculada"
 
+    # ── Consultar RAG o usar normativa fallback ───────────────
+    if coleccion is not None and modelo_emb is not None:
+        resultado_rag    = consultar_rag_originacion(
+            decision, pd_prob, top_features, coleccion, modelo_emb
+        )
+        normativa_texto  = resultado_rag['contexto_rag']
+        fuente_normativa = "base de conocimiento RAG (normativa CNBV indexada)"
+    else:
+        normativa_texto = (
+            "Circular Única de Bancos, Art. 92: las instituciones deben evaluar\n"
+            "la capacidad de pago del acreditado considerando ingresos, deudas\n"
+            "existentes y flujo de efectivo disponible.\n"
+            "Disposiciones CNBV sobre transparencia: el cliente tiene derecho a\n"
+            "conocer las razones de rechazo de su solicitud en términos comprensibles.\n"
+            "Criterios de calificación de cartera: la PD debe reflejar la probabilidad\n"
+            "real de incumplimiento basada en características del acreditado y del crédito.\n"
+            "Basilea III: las instituciones deben mantener capital proporcional al\n"
+            "riesgo de sus carteras, lo que justifica umbrales de aprobación basados en PD."
+        )
+        fuente_normativa = "normativa CNBV de referencia"
+
     # ── Prompt enriquecido ────────────────────────────────────
     prompt = f"""Eres un analista experto en riesgo crediticio de una institución
 financiera mexicana regulada por la CNBV. Tu rol es explicar las decisiones
@@ -237,16 +426,8 @@ DATOS DE LA SOLICITUD:
 FACTORES DETERMINANTES (análisis SHAP con referencia al portafolio):
 {features_texto}
 
-NORMATIVA CNBV APLICABLE:
-- Circular Única de Bancos, Art. 92: las instituciones deben evaluar
-  la capacidad de pago del acreditado considerando ingresos, deudas
-  existentes y flujo de efectivo disponible.
-- Disposiciones CNBV sobre transparencia: el cliente tiene derecho a
-  conocer las razones de rechazo de su solicitud en términos comprensibles.
-- Criterios de calificación de cartera: la PD debe reflejar la probabilidad
-  real de incumplimiento basada en características del acreditado y del crédito.
-- Basilea III: las instituciones deben mantener capital proporcional al
-  riesgo de sus carteras, lo que justifica umbrales de aprobación basados en PD.
+NORMATIVA CNBV APLICABLE ({fuente_normativa}):
+{normativa_texto}
 
 INSTRUCCIONES:
 1. Redacta una explicación profesional de máximo 200 palabras
@@ -499,6 +680,9 @@ with tab4:
     justificación en lenguaje natural citando normativa CNBV aplicable.
     """)
 
+    # ── CAMBIO 5: cargar RAG al inicio del tab ───────────────
+    col_rag, modelo_emb_rag, config_rag = cargar_rag_originacion()
+
     # ─────────────────────────────────────────────
     # SELECTOR DE PERFIL BASE
     # ─────────────────────────────────────────────
@@ -673,8 +857,11 @@ with tab4:
 
                 st.subheader("📋 Justificación del Agente")
                 with st.spinner("Generando explicación regulatoria..."):
+                    # ── CAMBIO 6: pasar col_rag y modelo_emb_rag ─
                     explicacion = generar_explicacion_agente(
-                        pd_prob, decision, shap_df[:3], input_data
+                        pd_prob, decision, shap_df[:3], input_data,
+                        coleccion  = col_rag,
+                        modelo_emb = modelo_emb_rag
                     )
 
                 if decision == "APROBAR":
@@ -946,7 +1133,7 @@ with tab5:
                 st.subheader("📋 Contribución por variable")
                 st.markdown("Cuántos puntos aporta cada variable a tu score total:")
 
-                tabla       = scorecard.table(style="detailed")
+                tabla        = scorecard.table(style="detailed")
                 contrib_data = []
 
                 for var in VARIABLES_SCORECARD:

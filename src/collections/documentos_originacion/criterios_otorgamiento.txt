@@ -1,0 +1,119 @@
+CRITERIOS GENERALES DE OTORGAMIENTO DE CRÉDITO
+Normativa CNBV — Referencia regulatoria para sistemas de scoring crediticio
+Versión 2024 | Uso interno institucional
+================================================================
+
+1. MARCO REGULATORIO
+
+Las instituciones de crédito supervisadas por la Comisión Nacional Bancaria y de
+Valores (CNBV) deben evaluar toda solicitud de financiamiento con base en criterios
+objetivos, documentables y reproducibles. El presente documento sintetiza los
+principios regulatorios aplicables al proceso de originación de crédito, conforme
+a las Disposiciones de Carácter General aplicables a las Instituciones de Crédito
+(CUB) y la Circular Única de Bancos.
+
+2. LAS CINCO "C" DEL CRÉDITO (CRITERIOS DE EVALUACIÓN)
+
+2.1 CAPACIDAD DE PAGO
+Definición: Suficiencia del flujo de ingresos del solicitante para cubrir las
+obligaciones crediticias sin comprometer su subsistencia.
+
+Indicadores requeridos:
+- Relación deuda/ingreso (DTI): el total de obligaciones mensuales no debe
+  superar el 40% del ingreso neto comprobable.
+- Antigüedad laboral mínima recomendada: 12 meses en el empleo actual.
+- Tipo de contratación: permanente, temporal o por honorarios.
+- Ingreso mensual neto verificable mediante CFDI, estados de cuenta o carta laboral.
+
+Métricas del modelo: DAYS_EMPLOYED (antigüedad laboral en días, negativo = activo),
+AMT_INCOME_TOTAL (ingreso anual declarado), AMT_ANNUITY (cuota mensual del crédito),
+ratio cuota/ingreso = AMT_ANNUITY / (AMT_INCOME_TOTAL / 12).
+
+2.2 CAPITAL (PATRIMONIO)
+Definición: Activos netos del solicitante que sirven como respaldo de la obligación.
+
+Indicadores:
+- Propiedad de bienes inmuebles (FLAG_OWN_REALTY: 1 = sí, 0 = no).
+- Propiedad de vehículo (FLAG_OWN_CAR: 1 = sí, 0 = no).
+- Antigüedad del vehículo (OWN_CAR_AGE: años, relevante para valoración).
+- Saldo de cuentas de ahorro e inversión.
+
+2.3 CARÁCTER (HISTORIAL CREDITICIO)
+Definición: Disposición histórica del solicitante para cumplir obligaciones.
+
+Fuentes de información:
+- Buró de Crédito: score FICO, comportamiento en créditos anteriores.
+- Scores externos EXT_SOURCE_1, EXT_SOURCE_2, EXT_SOURCE_3: indices sintéticos
+  de comportamiento crediticio de fuentes externas (bureaus, agencias).
+  Rango: 0 a 1. Mayor valor = mejor historial. Son las variables de mayor
+  peso predictivo en el modelo LightGBM de originación.
+
+2.4 COLATERAL (GARANTÍAS)
+Definición: Activos ofrecidos como garantía en caso de incumplimiento.
+
+Tipos reconocidos:
+- Garantía real: bien inmueble hipotecado.
+- Garantía prendaria: vehículo, maquinaria u equipo.
+- Aval o fiador solidario.
+- Garantía líquida: depósito en garantía equivalente al 10-20% del crédito.
+
+2.5 CONDICIONES (CONTEXTO ECONÓMICO)
+Definición: Factores externos que afectan la capacidad de pago futura.
+
+- Zona geográfica de residencia y densidad poblacional (REGION_POPULATION_RELATIVE).
+- Sector económico del empleador.
+- Ciclo económico y tasa de desempleo regional.
+- Tipo de crédito solicitado (Cash Loan vs Revolving).
+
+3. FACTORES DE RIESGO ADICIONALES
+
+3.1 Variables demográficas y de perfil
+- Edad del solicitante: DAYS_BIRTH (días desde nacimiento, valor negativo).
+  Mayor edad = mayor estabilidad en promedio, pero con curva no lineal después
+  de los 60 años.
+- Número de hijos (CNT_CHILDREN): más dependientes = mayor presión financiera.
+- Miembros del hogar (CNT_FAM_MEMBERS): correlacionado con gastos fijos.
+- Género: PROHIBIDO usar como variable de scoring (ver documento variables_prohibidas).
+
+3.2 Variables de comportamiento y contactabilidad
+- FLAG_WORK_PHONE, FLAG_PHONE, FLAG_EMAIL: indicadores de contactabilidad.
+  Un solicitante sin ningún medio de contacto registrado representa mayor riesgo
+  operativo de cobranza.
+- REG_CITY_NOT_LIVE_CITY: dirección de registro distinta a lugar de residencia.
+  Puede indicar inestabilidad o dificultad de localización.
+- LIVE_CITY_NOT_WORK_CITY: residencia distinta al trabajo (mayor carga de transporte).
+
+3.3 Variables del crédito solicitado
+- AMT_CREDIT: monto total del crédito. A mayor monto, mayor exposición (EAD).
+- AMT_GOODS_PRICE: precio del bien financiado. La diferencia con AMT_CREDIT
+  representa costos adicionales (seguros, comisiones).
+- Ratio LTV (Loan-to-Value): AMT_CREDIT / AMT_GOODS_PRICE. CNBV recomienda LTV
+  máximo de 90% para crédito hipotecario y 80% para crédito automotriz.
+
+4. UMBRALES DE DECISIÓN REGULATORIOS
+
+| Rango de PD          | Clasificación | Decisión recomendada     |
+|----------------------|---------------|--------------------------|
+| PD < 0.10            | Riesgo bajo   | APROBAR                  |
+| 0.10 <= PD <= 0.30   | Riesgo medio  | REVISAR (análisis manual)|
+| PD > 0.30            | Riesgo alto   | RECHAZAR                 |
+
+Nota: El umbral de 0.10 corresponde a un punto de corte calibrado por análisis
+costo-beneficio. Ver documento metodologia_perdida_esperada para cálculo de EL.
+
+5. OBLIGACIONES DE DOCUMENTACIÓN
+
+Toda decisión de crédito debe contar con:
+a) Expediente digital con evidencia de los cinco criterios evaluados.
+b) Registro del score del modelo y las variables con mayor peso (SHAP values).
+c) Justificación escrita en caso de aprobación de crédito con PD > 0.20.
+d) Trazabilidad completa del proceso para auditorías CNBV.
+e) Conservación del expediente por mínimo 10 años (Art. 99 CUB).
+
+6. REFERENCIAS NORMATIVAS
+
+- Circular Única de Bancos (CUB), Título Segundo, Capítulo IV.
+- Disposiciones de carácter general aplicables a las instituciones de crédito,
+  DOF 2 de diciembre de 2005 y sus reformas.
+- Criterios de contabilidad para instituciones de crédito (CNBV, 2023).
+- Ley de Instituciones de Crédito, Art. 65-68.

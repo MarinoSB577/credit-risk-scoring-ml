@@ -1,0 +1,130 @@
+REQUERIMIENTOS DE EXPLICABILIDAD PARA MODELOS DE INTELIGENCIA ARTIFICIAL
+EN DECISIONES DE CRÉDITO
+CNBV — Lineamientos para Instituciones de Crédito supervisadas
+Versión 1.2 | 2024
+================================================================
+
+1. ANTECEDENTES Y FUNDAMENTO LEGAL
+
+La adopción de modelos de Machine Learning (ML) e Inteligencia Artificial (IA)
+en la originación de crédito plantea obligaciones específicas de transparencia
+y explicabilidad. Estos lineamientos derivan de:
+
+- Artículo 65 de la Ley de Instituciones de Crédito: obligación de contar con
+  metodologías documentadas para la evaluación del riesgo de crédito.
+- Principios del Comité de Basilea sobre el uso de IA en banca (2022).
+- Ley Federal de Protección de Datos Personales en Posesión de los Particulares
+  (LFPDPPP): derecho del titular a conocer decisiones automatizadas que le afecten.
+- Ley para Regular las Instituciones de Tecnología Financiera (Ley Fintech),
+  Art. 76: trato justo y no discriminatorio.
+
+2. OBLIGACIONES DE EXPLICABILIDAD POR NIVEL DE DECISIÓN
+
+2.1 NIVEL OPERATIVO (Analista de crédito)
+El analista que ejecuta o revisa la decisión del modelo debe poder acceder a:
+
+a) Probabilidad de incumplimiento (PD) expresada como porcentaje.
+b) Score crediticio en puntos (escala 300-850, base PDO=20).
+c) Decisión recomendada: APROBAR / REVISAR / RECHAZAR.
+d) Las 5 variables con mayor influencia en la decisión, con su dirección
+   (aumenta o disminuye el riesgo) y magnitud relativa.
+e) Comparación del perfil del solicitante vs perfil promedio del portafolio.
+
+Herramienta técnica recomendada: SHAP (SHapley Additive exPlanations).
+Los valores SHAP cumplen con el principio de explicabilidad local: para cada
+solicitud individual, cuantifican la contribución marginal de cada variable
+a la predicción final del modelo.
+
+2.2 NIVEL DE CUMPLIMIENTO (Oficial de cumplimiento / Auditor)
+El oficial de cumplimiento debe poder verificar:
+
+a) Que ninguna variable prohibida fue utilizada en el modelo (ver documento
+   variables_prohibidas_scoring.docx).
+b) Que el modelo fue validado con métricas objetivas antes de su uso en producción
+   (AUC, KS, Gini, tasa de error Tipo I y Tipo II).
+c) Que existe un proceso documentado de monitoreo de drift (PSI, KS estadístico).
+d) Que el modelo cuenta con versión registrada, fecha de entrenamiento y métricas
+   de validación en un sistema de gestión de experimentos (MLflow o equivalente).
+e) Que existe un proceso de reentrenamiento ante degradación del modelo.
+
+2.3 NIVEL DIRECTIVO (Director de Riesgo / Consejo)
+El reporte ejecutivo debe incluir:
+
+a) Distribución del portafolio por segmento de riesgo (bajo/medio/alto).
+b) Pérdida Esperada total: EL = PD × EAD × LGD, por producto y segmento.
+c) Comparación de métricas del modelo vs período anterior (AUC, KS, Recall).
+d) Alertas de drift: variables con PSI > 0.20 (degradación severa).
+e) Acciones correctivas tomadas o en proceso.
+
+3. DERECHO DEL SOLICITANTE A EXPLICACIÓN
+
+Conforme a la LFPDPPP y criterios internacionales de IA responsable, todo
+solicitante de crédito que reciba una decisión negativa tiene derecho a:
+
+a) Conocer que su solicitud fue evaluada mediante un modelo automatizado.
+b) Recibir una explicación comprensible (no técnica) de los principales
+   factores que influyeron en la decisión.
+c) Solicitar revisión humana de la decisión automatizada.
+d) Que sus datos sean tratados conforme al aviso de privacidad.
+
+Ejemplo de explicación comprensible para el solicitante:
+"Su solicitud fue evaluada considerando principalmente su historial crediticio
+externo, su antigüedad laboral y el monto de crédito solicitado en relación
+a sus ingresos. El principal factor de riesgo identificado fue [FACTOR_1]."
+
+4. REQUERIMIENTOS TÉCNICOS DEL SISTEMA DE EXPLICABILIDAD
+
+4.1 Granularidad de la explicación
+- La explicación debe ser LOCAL (por solicitante individual), no global (del modelo).
+- Usar SHAP TreeExplainer para modelos de árboles (LightGBM, XGBoost, Random Forest).
+- Presentar como mínimo las 5 variables de mayor valor absoluto |SHAP|.
+
+4.2 Vocabulario regulatorio
+Los nombres de las variables del modelo deben traducirse a términos comprensibles:
+- EXT_SOURCE_1/2/3 → "Score de historial crediticio externo (bureau)"
+- DAYS_BIRTH → "Edad del solicitante"
+- DAYS_EMPLOYED → "Antigüedad laboral"
+- AMT_CREDIT → "Monto del crédito solicitado"
+- AMT_INCOME_TOTAL → "Ingreso anual declarado"
+- AMT_ANNUITY → "Cuota mensual del crédito"
+
+4.3 Referencia normativa en la explicación
+Cada factor de riesgo debe citarse con la disposición regulatoria que lo sustenta.
+Ejemplo: "Antigüedad laboral insuficiente — criterio de Capacidad de Pago
+conforme al Art. 65 LIC y Criterios Generales de Otorgamiento."
+
+5. AUDITORÍA Y TRAZABILIDAD
+
+5.1 Registro obligatorio por solicitud
+- Timestamp de la evaluación (UTC).
+- Versión del modelo (nombre + versión MLflow).
+- Input completo del solicitante (hash o referencia al expediente).
+- PD, score y decisión resultante.
+- Top 5 SHAP values con nombres de variable.
+
+5.2 Retención de registros
+- Plazo mínimo de conservación: 10 años (Art. 99 CUB).
+- Formato: estructurado (JSON, base de datos relacional) y auditable.
+- Acceso restringido a personal autorizado con log de consultas.
+
+5.3 Monitoreo continuo del modelo
+- Frecuencia mínima de revisión: mensual.
+- Indicadores de alerta: PSI > 0.10 (degradación moderada), PSI > 0.20 (severa).
+- Ante degradación severa: trigger automático de reentrenamiento o revisión manual.
+
+6. SANCIONES POR INCUMPLIMIENTO
+
+El incumplimiento de estos lineamientos puede resultar en:
+- Observaciones y requerimientos de la CNBV (Art. 25 LIC).
+- Multas de hasta 100,000 UDIS por violación de protección de datos.
+- Responsabilidad civil ante el solicitante por decisiones discriminatorias.
+- Cancelación de autorización para operar modelos automatizados de crédito.
+
+7. REFERENCIAS
+
+- Ley de Instituciones de Crédito (LIC), DOF 18 de julio de 1990 y reformas.
+- LFPDPPP, DOF 5 de julio de 2010.
+- Ley Fintech, DOF 9 de marzo de 2018.
+- Principios de alto nivel sobre riesgos de conducta en IA (FSB, 2023).
+- Basilea III: Marco regulador internacional, BIS 2022.
+- CNBV, Oficio DGABM-157-2023: Uso de modelos de IA en evaluación crediticia.
