@@ -173,18 +173,48 @@ def cargar_rag_originacion():
 
         if COLLECTION_NAME not in colecciones or \
            chroma_client.get_collection(COLLECTION_NAME).count() == 0:
-            st.warning(
-                f"⚠️ Colección '{COLLECTION_NAME}' vacía o no encontrada. "
-                "Re-ejecuta el notebook 12 para re-indexar."
+
+            st.info("⚙️ Inicializando base de conocimiento RAG de originación...")
+
+            if COLLECTION_NAME in colecciones:
+                chroma_client.delete_collection(COLLECTION_NAME)
+
+            coleccion = chroma_client.create_collection(
+                name     = COLLECTION_NAME,
+                metadata = {"version": "1.0"}
             )
-            return None, None, None
 
-        coleccion = chroma_client.get_collection(COLLECTION_NAME)
-        return coleccion, modelo_emb, config
+            # Cargar e indexar documentos automáticamente
+            docs_path  = Path(config['docs_path'])
+            sys.path.insert(0, str(docs_path.parent))
 
-    except Exception as e:
-        st.error(f"Error cargando RAG de originación: {e}")
-        return None, None, None
+            from document_loader import load_documents_from_folder
+            from sentence_transformers import SentenceTransformer
+
+            chunks     = load_documents_from_folder(str(docs_path), verbose=False)
+            modelo_emb = SentenceTransformer(config['modelo_embeddings'])
+
+            BATCH_SIZE = 10
+            for i in range(0, len(chunks), BATCH_SIZE):
+                lote = chunks[i:i + BATCH_SIZE]
+                coleccion.add(
+                    ids        = [c['chunk_id'] for c in lote],
+                    documents  = [c['text']     for c in lote],
+                    embeddings = modelo_emb.encode(
+                        [c['text'] for c in lote],
+                        normalize_embeddings=True
+                    ).tolist(),
+                    metadatas  = [{'source': c['source'],
+                                   'page'  : str(c['page'])} for c in lote],
+                )
+
+            st.success(
+                f"✅ Base de conocimiento inicializada: "
+                f"{len(chunks)} fragmentos indexados"
+            )
+
+        else:
+            coleccion = chroma_client.get_collection(COLLECTION_NAME)
 
 
 # ─────────────────────────────────────────────
