@@ -128,16 +128,15 @@ def load_portfolio_stats():
         return json.load(f)
 
 # ─────────────────────────────────────────────
-# RAG ORIGINACIÓN — CAMBIO 2
+# RAG ORIGINACIÓN — cargar_rag_originacion()
 # ─────────────────────────────────────────────
 
 @st.cache_resource
 def cargar_rag_originacion():
     """
     Carga ChromaDB y modelo de embeddings para RAG de originación.
-    Mismo patrón que cargar_rag() en tab_cobranza.py.
-    Si la colección no existe, retorna (None, None, None) y la función
-    generar_explicacion_agente() usa el fallback hardcodeado original.
+    Si la colección no existe o está vacía, re-indexa automáticamente
+    desde los documentos en disco (mismo patrón que tab_cobranza.py).
     """
     try:
         os.environ.pop('SSL_CERT_FILE', None)
@@ -151,7 +150,6 @@ def cargar_rag_originacion():
         MODELS_PATH      = DASHBOARD_PATH / 'models'
         COLLECTIONS_PATH = BASE_PATH / 'src' / 'collections'
 
-        # Agregar src/collections al path
         sys.path.insert(0, str(COLLECTIONS_PATH))
 
         config_path = MODELS_PATH / 'chroma_config_originacion.pkl'
@@ -185,14 +183,10 @@ def cargar_rag_originacion():
             )
 
             # Cargar e indexar documentos automáticamente
-            docs_path  = Path(config['docs_path'])
-            sys.path.insert(0, str(docs_path.parent))
-
+            docs_path = Path(config['docs_path'])
             from document_loader import load_documents_from_folder
-            from sentence_transformers import SentenceTransformer
 
-            chunks     = load_documents_from_folder(str(docs_path), verbose=False)
-            modelo_emb = SentenceTransformer(config['modelo_embeddings'])
+            chunks = load_documents_from_folder(str(docs_path), verbose=False)
 
             BATCH_SIZE = 10
             for i in range(0, len(chunks), BATCH_SIZE):
@@ -216,9 +210,15 @@ def cargar_rag_originacion():
         else:
             coleccion = chroma_client.get_collection(COLLECTION_NAME)
 
+        return coleccion, modelo_emb, config
+
+    except Exception as e:
+        st.error(f"Error cargando RAG de originación: {e}")
+        return None, None, None
+
 
 # ─────────────────────────────────────────────
-# RAG ORIGINACIÓN — CAMBIO 3
+# RAG ORIGINACIÓN — consultar_rag_originacion()
 # ─────────────────────────────────────────────
 
 def consultar_rag_originacion(decision, pd_prob, top_features,
@@ -227,11 +227,7 @@ def consultar_rag_originacion(decision, pd_prob, top_features,
     """
     Búsqueda semántica en la base de conocimiento de originación.
     Mismo patrón que consultar_rag_dashboard() en tab_cobranza.py.
-
-    Query: decisión + rango PD + variables SHAP principales.
-    Documento prioritario: según la decisión (aprobar/revisar/rechazar).
     """
-    # ── Construir query semántica ────────────────────────────
     variable_principal  = get_feature_name(top_features[0][0]) \
                           if top_features else "historial crediticio"
     variable_secundaria = get_feature_name(top_features[1][0]) \
@@ -252,7 +248,6 @@ def consultar_rag_originacion(decision, pd_prob, top_features,
         f"normativa CNBV explicabilidad"
     )
 
-    # ── Documento prioritario según decisión ────────────────
     prioridad_map = {
         "APROBAR" : "criterios_otorgamiento.txt",
         "REVISAR" : "criterios_otorgamiento.txt",
@@ -265,7 +260,6 @@ def consultar_rag_originacion(decision, pd_prob, top_features,
         normalize_embeddings=True
     ).tolist()
 
-    # ── Búsqueda prioritaria ─────────────────────────────────
     try:
         res_prio = coleccion.query(
             query_embeddings = embedding_q,
@@ -275,14 +269,12 @@ def consultar_rag_originacion(decision, pd_prob, top_features,
     except Exception:
         res_prio = {"documents": [[]], "metadatas": [[]]}
 
-    # ── Búsqueda complementaria ──────────────────────────────
     res_comp = coleccion.query(
         query_embeddings = embedding_q,
         n_results        = n_resultados,
         where            = {"source": {"$ne": archivo_prio}}
     )
 
-    # ── Combinar y deduplicar ────────────────────────────────
     docs = []
     if res_prio['documents'][0]:
         docs.append({
@@ -304,7 +296,6 @@ def consultar_rag_originacion(decision, pd_prob, top_features,
             })
             archivos_vistos.add(meta['source'])
 
-    # ── Formatear contexto para el prompt ───────────────────
     partes = []
     for doc in docs:
         nombre = (doc['source']
@@ -322,7 +313,7 @@ def consultar_rag_originacion(decision, pd_prob, top_features,
 
 
 # ─────────────────────────────────────────────
-# FUNCIONES SHAP Y AGENTE — CAMBIO 4
+# FUNCIONES SHAP Y AGENTE
 # ─────────────────────────────────────────────
 
 @st.cache_data
@@ -340,10 +331,8 @@ def generar_explicacion_agente(pd_prob, decision, top_features,
     referencia del portafolio y contexto RAG de normativa CNBV.
     Si coleccion/modelo_emb son None, usa normativa hardcodeada (fallback).
     """
-    # ── Cargar estadísticas del portafolio ───────────────────
     portfolio_stats = load_portfolio_stats()
 
-    # ── Función para interpretar cada variable ───────────────
     def interpretar_valor(feat, val_real, shap_val):
         nombre    = get_feature_name(feat)
         direccion = "aumenta" if shap_val > 0 else "reduce"
@@ -402,13 +391,11 @@ def generar_explicacion_agente(pd_prob, decision, top_features,
             return (f"{nombre}: {val_real:.4f} "
                     f"→ {direccion} el riesgo (SHAP: {shap_val:+.4f})")
 
-    # ── Construir texto de variables enriquecido ─────────────
     features_texto = "\n".join([
         f"  {i+1}. {interpretar_valor(feat, val_real, shap_val)}"
         for i, (feat, shap_val, val_real) in enumerate(top_features)
     ])
 
-    # ── Calcular carga financiera ─────────────────────────────
     try:
         ingreso_mensual = input_data['AMT_INCOME_TOTAL'].values[0] / 12
         cuota_mensual   = input_data['AMT_ANNUITY'].values[0]
@@ -417,7 +404,6 @@ def generar_explicacion_agente(pd_prob, decision, top_features,
     except Exception:
         carga_texto = "no calculada"
 
-    # ── Consultar RAG o usar normativa fallback ───────────────
     if coleccion is not None and modelo_emb is not None:
         resultado_rag    = consultar_rag_originacion(
             decision, pd_prob, top_features, coleccion, modelo_emb
@@ -438,7 +424,6 @@ def generar_explicacion_agente(pd_prob, decision, top_features,
         )
         fuente_normativa = "normativa CNBV de referencia"
 
-    # ── Prompt enriquecido ────────────────────────────────────
     prompt = f"""Eres un analista experto en riesgo crediticio de una institución
 financiera mexicana regulada por la CNBV. Tu rol es explicar las decisiones
 del modelo de scoring de forma clara, profesional y regulatoriamente válida.
@@ -710,7 +695,7 @@ with tab4:
     justificación en lenguaje natural citando normativa CNBV aplicable.
     """)
 
-    # ── CAMBIO 5: cargar RAG al inicio del tab ───────────────
+    # Cargar RAG al inicio del tab
     col_rag, modelo_emb_rag, config_rag = cargar_rag_originacion()
 
     # ─────────────────────────────────────────────
@@ -887,7 +872,6 @@ with tab4:
 
                 st.subheader("📋 Justificación del Agente")
                 with st.spinner("Generando explicación regulatoria..."):
-                    # ── CAMBIO 6: pasar col_rag y modelo_emb_rag ─
                     explicacion = generar_explicacion_agente(
                         pd_prob, decision, shap_df[:3], input_data,
                         coleccion  = col_rag,
@@ -907,7 +891,6 @@ with tab4:
                     "del analista de crédito ni constituye resolución definitiva."
                 )
 
-                # Guardar contexto para el chat conversacional
                 shap_resumen = ", ".join([
                     f"{get_feature_name(f[0])}({f[1]:+.3f})"
                     for f in shap_df[:3]
