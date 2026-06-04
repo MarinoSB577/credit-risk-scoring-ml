@@ -183,7 +183,7 @@ def cargar_rag_originacion():
             )
 
             # Cargar e indexar documentos automáticamente
-            docs_path = Path(config['docs_path'])
+            docs_path = Path(__file__).parent.parent / 'src' / 'collections' / 'documentos_originacion'
             from document_loader import load_documents_from_folder
 
             chunks = load_documents_from_folder(str(docs_path), verbose=False)
