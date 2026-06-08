@@ -35,6 +35,11 @@ warnings.filterwarnings('ignore')
 # ── Agente de Cobranza Level 3 — importación opcional ───────────────────────
 _LEVEL3_OK = False
 try:
+    import sys as _sys
+    from pathlib import Path as _Path
+    _crm_path = str(_Path(__file__).parent.parent / "src")
+    if _crm_path not in _sys.path:
+        _sys.path.insert(0, _crm_path)
     from crm import (
         inicializar_crm  as _inicializar_crm,
         ejecutar_agente  as _ejecutar_agente,
