@@ -31,6 +31,20 @@ import warnings
 from pathlib import Path
 warnings.filterwarnings('ignore')
 
+
+# ── Agente de Cobranza Level 3 — importación opcional ───────────────────────
+_LEVEL3_OK = False
+try:
+    from crm import (
+        inicializar_crm  as _inicializar_crm,
+        ejecutar_agente  as _ejecutar_agente,
+        ejecutar_lote_ews as _ejecutar_lote_ews,
+        get_db_path      as _get_db_path,
+    )
+    _LEVEL3_OK = True
+except ImportError:
+    pass
+
 # ── Rutas del proyecto ───────────────────────────────────────
 DASHBOARD_PATH   = Path(__file__).parent
 BASE_PATH        = DASHBOARD_PATH.parent
@@ -544,6 +558,113 @@ Genera la estrategia de cobranza para este cliente:
         return f"❌ Error al generar estrategia: {e}"
 
 
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Funciones auxiliares — Agente Level 3
+# ────────────────────────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=10)
+def _crm_clientes():
+    """Lee tabla de clientes del CRM (se refresca cada 10s)."""
+    if not _LEVEL3_OK:
+        return pd.DataFrame()
+    import sqlite3
+    con = sqlite3.connect(str(_get_db_path()))
+    df = pd.read_sql(
+        "SELECT cliente_id, nombre, etapa_cobranza, "
+        "ROUND(ews_score,3) as ews_score, dias_mora, "
+        "ROUND(monto_adeudado,2) as monto_adeudado, "
+        "gestionado_humano "
+        "FROM clientes ORDER BY ews_score DESC",
+        con
+    )
+    con.close()
+    df['gestionado_humano'] = df['gestionado_humano'].apply(
+        lambda x: "🔒 Bloqueado" if x else "✅ Activo"
+    )
+    return df
+
+
+@st.cache_data(ttl=10)
+def _crm_escalaciones_pendientes():
+    """Lee escalaciones pendientes del CRM."""
+    if not _LEVEL3_OK:
+        return pd.DataFrame()
+    import sqlite3
+    con = sqlite3.connect(str(_get_db_path()))
+    df = pd.read_sql(
+        """SELECT e.escalacion_id, e.cliente_id, c.nombre,
+           e.nivel, SUBSTR(e.motivo,1,70) as motivo, e.timestamp
+           FROM escalaciones e
+           JOIN clientes c ON e.cliente_id = c.cliente_id
+           WHERE e.estado = 'pendiente'
+           ORDER BY e.timestamp DESC""",
+        con
+    )
+    con.close()
+    return df
+
+
+@st.cache_data(ttl=10)
+def _crm_log_decisiones(limite: int = 20):
+    """Lee las últimas N decisiones del log."""
+    if not _LEVEL3_OK:
+        return pd.DataFrame()
+    import sqlite3
+    con = sqlite3.connect(str(_get_db_path()))
+    df = pd.read_sql(
+        f"""SELECT l.log_id, l.cliente_id, c.nombre,
+            l.tool_llamada, l.status,
+            SUBSTR(l.razonamiento,1,90) as razonamiento,
+            l.timestamp
+            FROM log_decisiones l
+            JOIN clientes c ON l.cliente_id = c.cliente_id
+            ORDER BY l.timestamp DESC LIMIT {limite}""",
+        con
+    )
+    con.close()
+    return df
+
+
+def _resolver_escalacion(escalacion_id: str,
+                          resuelto_por: str = "Supervisor") -> None:
+    """
+    Marca una escalación como resuelta.
+    Si no quedan más escalaciones pendientes para el cliente,
+    libera gestionado_humano=0 para que el trigger autónomo vuelva a actuar.
+    """
+    if not _LEVEL3_OK:
+        return
+    import sqlite3
+    from datetime import datetime
+    con = sqlite3.connect(str(_get_db_path()))
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with con:
+        row = con.execute(
+            "SELECT cliente_id FROM escalaciones WHERE escalacion_id=?",
+            (escalacion_id,)
+        ).fetchone()
+        con.execute(
+            "UPDATE escalaciones SET estado='resuelto', "
+            "resuelto_por=?, fecha_resolucion=? "
+            "WHERE escalacion_id=?",
+            (resuelto_por, ts, escalacion_id)
+        )
+        if row:
+            cid = row[0]
+            n_pend = con.execute(
+                "SELECT COUNT(*) FROM escalaciones "
+                "WHERE cliente_id=? AND estado='pendiente'",
+                (cid,)
+            ).fetchone()[0]
+            if n_pend == 0:
+                con.execute(
+                    "UPDATE clientes SET gestionado_humano=0 "
+                    "WHERE cliente_id=?", (cid,)
+                )
+    con.close()
+
 # ============================================================
 # FUNCIÓN PRINCIPAL DE LA TAB
 # ============================================================
@@ -685,7 +806,350 @@ def render_tab_cobranza():
         key                 = "tabla_clientes_riesgo"
     )
 
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # AGENTE DE COBRANZA AUTÓNOMO — LEVEL 3
+    # ═══════════════════════════════════════════════════════════════════════
     st.divider()
+    st.subheader("🤖 Agente de Cobranza Autónomo — Level 3")
+
+    if not _LEVEL3_OK:
+        st.warning(
+            "⚠️ Módulo `src/crm` no encontrado. "
+            "Completa las Fases 1-2 del Agente Level 3 primero."
+        )
+    else:
+        # Fix SSL (necesario para langchain_anthropic en Windows con conda)
+        os.environ.pop('SSL_CERT_FILE', None)
+
+        # Inicializar CRM — idempotente, seguro en cada render
+        _inicializar_crm()
+
+        # Descripción + métricas de diseño
+        col_desc, col_m1, col_m2, col_m3 = st.columns([3, 1, 1, 1])
+        with col_desc:
+            st.markdown(
+                "Agente que **ejecuta acciones** directamente en el CRM sin "
+                "aprobación por acción. El supervisor audita el `log_decisiones`. "
+                "Casos críticos (judicial · monto >$50k · 5+ intentos fallidos) "
+                "requieren confirmación humana antes de ejecutar."
+            )
+        with col_m1:
+            st.metric("Nodos grafo", "7",
+                      help="LangGraph StateGraph compilado")
+        with col_m2:
+            st.metric("Tools activas", "4",
+                      help="registrar_contacto · actualizar_estado · "
+                           "escalar_caso · generar_propuesta")
+        with col_m3:
+            st.metric("CRM tables", "5",
+                      help="clientes · contactos · escalaciones · "
+                           "propuestas · log_decisiones")
+
+        # Sub-tabs de la sección Level 3
+        tab_ej, tab_esc, tab_log_d = st.tabs([
+            "▶️ Ejecutar agente",
+            "🚨 Escalaciones pendientes",
+            "📊 Log de decisiones",
+        ])
+
+        # ── Tab: Ejecutar ────────────────────────────────────────
+        with tab_ej:
+            col_ctrl, col_tabla = st.columns([1, 2])
+
+            with col_ctrl:
+                modo_autonomo = st.toggle(
+                    "⚡ Modo autónomo",
+                    value=False,
+                    help=(
+                        "OFF → modo asistido (agente ejecuta, sin reglas de pausa). "
+                        "ON → modo autónomo con pausa obligatoria en casos críticos."
+                    ),
+                    key="l3_modo_autonomo"
+                )
+                st.caption(
+                    "🟢 Autónomo activo" if modo_autonomo
+                    else "🔵 Modo asistido"
+                )
+                st.divider()
+
+                # Selector de cliente del CRM
+                df_clientes = _crm_clientes()
+                if df_clientes.empty:
+                    st.warning("CRM vacío. Ejecuta init_crm.py primero.")
+                else:
+                    etiquetas_l3 = [
+                        f"{row.cliente_id} — {row.nombre[:18]} "
+                        f"({row.etapa_cobranza})"
+                        for row in df_clientes.itertuples()
+                    ]
+                    idx_l3 = st.selectbox(
+                        "Selecciona cliente CRM",
+                        range(len(df_clientes)),
+                        format_func=lambda i: etiquetas_l3[i],
+                        key="l3_cliente_sel"
+                    )
+                    cliente_id_l3 = df_clientes.iloc[idx_l3]['cliente_id']
+
+                    st.divider()
+
+                    # Botón: ejecución individual
+                    if st.button(
+                        "▶️ Ejecutar agente",
+                        type="primary",
+                        use_container_width=True,
+                        key="l3_btn_individual"
+                    ):
+                        with st.spinner(f"Procesando {cliente_id_l3}..."):
+                            resultado_l3 = _ejecutar_agente(
+                                cliente_id_l3,
+                                modo_autonomo=modo_autonomo
+                            )
+                        st.session_state["l3_resultado"]  = resultado_l3
+                        st.session_state["l3_cliente_id"] = cliente_id_l3
+                        st.cache_data.clear()
+                        st.rerun()
+
+                    # Botón: lote EWS
+                    if st.button(
+                        "⚡ Lote EWS — 5 clientes",
+                        use_container_width=True,
+                        key="l3_btn_lote"
+                    ):
+                        df_activos = df_clientes[
+                            df_clientes['gestionado_humano'] == "✅ Activo"
+                        ].head(5)
+                        ids_lote = df_activos['cliente_id'].tolist()
+
+                        if not ids_lote:
+                            st.warning("No hay clientes activos en el CRM.")
+                        else:
+                            barra_l3 = st.progress(
+                                0, text="Iniciando lote EWS..."
+                            )
+                            lote_resultados = []
+                            for i_l, cid_l in enumerate(ids_lote):
+                                barra_l3.progress(
+                                    (i_l + 1) / len(ids_lote),
+                                    text=f"Procesando {cid_l} "
+                                         f"({i_l+1}/{len(ids_lote)})..."
+                                )
+                                r_l = _ejecutar_agente(
+                                    cid_l, modo_autonomo=modo_autonomo
+                                )
+                                lote_resultados.append(r_l.to_dict())
+                            st.session_state["l3_lote"] = lote_resultados
+                            st.cache_data.clear()
+                            st.rerun()
+
+            with col_tabla:
+                st.markdown("##### Clientes en el CRM")
+                st.dataframe(
+                    df_clientes.rename(columns={
+                        "cliente_id":       "ID",
+                        "nombre":           "Nombre",
+                        "etapa_cobranza":   "Etapa",
+                        "ews_score":        "EWS",
+                        "dias_mora":        "Mora (días)",
+                        "monto_adeudado":   "Monto ($)",
+                        "gestionado_humano":"Estado",
+                    }),
+                    use_container_width=True,
+                    hide_index=True,
+                    height=380,
+                )
+
+            # ── Resultado individual ──────────────────────────────
+            if "l3_resultado" in st.session_state:
+                r_i = st.session_state["l3_resultado"]
+                st.divider()
+                st.markdown(
+                    f"#### Resultado — "
+                    f"{st.session_state.get('l3_cliente_id', '')}"
+                )
+
+                if r_i.requiere_confirmacion and modo_autonomo:
+                    st.warning(
+                        "⚠️ **Requiere confirmación humana.** "
+                        "Motivo: etapa judicial, monto >$50,000 "
+                        "o 5+ intentos fallidos."
+                    )
+                    col_ap, col_can = st.columns(2)
+                    with col_ap:
+                        if st.button(
+                            "✅ Confirmar y ejecutar",
+                            type="primary",
+                            key="l3_confirmar"
+                        ):
+                            with st.spinner("Ejecutando..."):
+                                r_conf = _ejecutar_agente(
+                                    st.session_state["l3_cliente_id"],
+                                    modo_autonomo=False
+                                )
+                            st.session_state["l3_resultado"] = r_conf
+                            st.cache_data.clear()
+                            st.rerun()
+                    with col_can:
+                        if st.button("❌ Cancelar", key="l3_cancelar"):
+                            del st.session_state["l3_resultado"]
+                            st.rerun()
+                else:
+                    col_r1, col_r2, col_r3 = st.columns(3)
+                    with col_r1:
+                        st.metric("Acción", r_i.accion_tomada)
+                    with col_r2:
+                        st.metric("Urgencia", r_i.urgencia or "—")
+                    with col_r3:
+                        if r_i.error:
+                            est = "❌ Error"
+                        elif r_i.resultado_ok:
+                            est = "✅ OK"
+                        else:
+                            est = "ℹ️ Sin acción"
+                        st.metric("Estado", est)
+
+                    if r_i.mensaje_resultado:
+                        st.success(r_i.mensaje_resultado)
+                    if r_i.error:
+                        st.error(f"Error: {r_i.error}")
+                    if r_i.razonamiento:
+                        with st.expander("📝 Razonamiento del agente"):
+                            st.write(r_i.razonamiento)
+
+            # ── Resultado lote ────────────────────────────────────
+            if "l3_lote" in st.session_state:
+                st.divider()
+                st.markdown("#### Resultado del lote EWS")
+                df_lt = pd.DataFrame(st.session_state["l3_lote"])
+                cols_lt = [c for c in [
+                    "cliente_id", "accion_tomada", "urgencia",
+                    "resultado_ok", "requiere_confirmacion",
+                    "mensaje_resultado",
+                ] if c in df_lt.columns]
+                st.dataframe(
+                    df_lt[cols_lt].rename(columns={
+                        "cliente_id":            "Cliente",
+                        "accion_tomada":         "Acción",
+                        "urgencia":              "Urgencia",
+                        "resultado_ok":          "OK",
+                        "requiere_confirmacion": "Pausa",
+                        "mensaje_resultado":     "Resultado",
+                    }),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                col_lt1, col_lt2, col_lt3 = st.columns(3)
+                with col_lt1:
+                    n_ok_lt = sum(
+                        1 for r in st.session_state["l3_lote"]
+                        if r.get("resultado_ok")
+                    )
+                    st.metric("Ejecutadas", f"{n_ok_lt}/{len(df_lt)}")
+                with col_lt2:
+                    n_err_lt = sum(
+                        1 for r in st.session_state["l3_lote"]
+                        if r.get("error")
+                    )
+                    st.metric("Errores", n_err_lt)
+                with col_lt3:
+                    n_pau_lt = sum(
+                        1 for r in st.session_state["l3_lote"]
+                        if r.get("requiere_confirmacion")
+                    )
+                    st.metric("Requieren pausa", n_pau_lt)
+
+        # ── Tab: Escalaciones ─────────────────────────────────────
+        with tab_esc:
+            st.markdown("##### Escalaciones pendientes de resolución humana")
+            st.caption(
+                "Casos escalados por el agente que requieren intervención. "
+                "Al resolver, se libera el bloqueo automático del cliente."
+            )
+            df_esc_tab = _crm_escalaciones_pendientes()
+
+            if df_esc_tab.empty:
+                st.info("✅ No hay escalaciones pendientes en este momento.")
+            else:
+                st.caption(f"**{len(df_esc_tab)}** casos pendientes")
+                for _, row_esc in df_esc_tab.iterrows():
+                    with st.container(border=True):
+                        ce1, ce2, ce3, ce4 = st.columns([1, 1, 3, 1])
+                        with ce1:
+                            st.markdown(f"**{row_esc['cliente_id']}**")
+                            st.caption(row_esc['nombre'])
+                        with ce2:
+                            n_col = {
+                                "legal": "🔴", "supervisor": "🟠",
+                                "castigo": "⚫"
+                            }.get(row_esc['nivel'], "🔵")
+                            st.markdown(f"{n_col} {row_esc['nivel'].upper()}")
+                            st.caption(str(row_esc['timestamp'])[:16])
+                        with ce3:
+                            st.markdown(row_esc['motivo'])
+                        with ce4:
+                            if st.button(
+                                "✅ Resolver",
+                                key=f"resolver_{row_esc['escalacion_id']}",
+                                use_container_width=True
+                            ):
+                                _resolver_escalacion(
+                                    row_esc['escalacion_id'],
+                                    resuelto_por="Supervisor_Dashboard"
+                                )
+                                st.success(
+                                    f"Caso {row_esc['escalacion_id']} resuelto. "
+                                    f"Cliente {row_esc['cliente_id']} reactivado."
+                                )
+                                st.cache_data.clear()
+                                st.rerun()
+
+        # ── Tab: Log de decisiones ────────────────────────────────
+        with tab_log_d:
+            st.markdown("##### Log de decisiones del agente")
+            st.caption(
+                "Registro auditable completo: qué tool eligió el agente, "
+                "con qué argumentos, qué resultado obtuvo y por qué lo decidió."
+            )
+            df_log_tab = _crm_log_decisiones(limite=20)
+
+            if df_log_tab.empty:
+                st.info("El log de decisiones está vacío.")
+            else:
+                col_lg1, col_lg2, col_lg3 = st.columns(3)
+                with col_lg1:
+                    st.metric(
+                        "Decisiones exitosas",
+                        len(df_log_tab[df_log_tab['status'] == 'ok'])
+                    )
+                with col_lg2:
+                    st.metric(
+                        "Errores registrados",
+                        len(df_log_tab[df_log_tab['status'] == 'error'])
+                    )
+                with col_lg3:
+                    tool_top_log = (
+                        df_log_tab[df_log_tab['tool_llamada'].notna()]
+                        ['tool_llamada'].value_counts().idxmax()
+                        if df_log_tab['tool_llamada'].notna().any()
+                        else "—"
+                    )
+                    st.metric("Tool más usada", tool_top_log)
+
+                st.dataframe(
+                    df_log_tab.rename(columns={
+                        "log_id":       "ID",
+                        "cliente_id":   "Cliente",
+                        "nombre":       "Nombre",
+                        "tool_llamada": "Tool",
+                        "status":       "Status",
+                        "razonamiento": "Razonamiento",
+                        "timestamp":    "Timestamp",
+                    }),
+                    use_container_width=True,
+                    hide_index=True,
+                    height=400,
+                )
+
 
     # ── Panel de estrategia ──────────────────────────────────
     st.subheader("🎯 Estrategia de Cobranza")
